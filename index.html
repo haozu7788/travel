@@ -3,12 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>旅遊行程規劃助手 v13.1 (原生列印＋附圖管理版)</title>
+    <title>旅遊行程規劃助手 v13.2 (動態幣別支援版)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .editing-row { background-color: #fff7ed !important; border-left: 4px solid #f97316; }
         @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
         .save-toast { animation: fadeOut 2s forwards; animation-delay: 1s; }
+        .current-item { background-color: #fef08a !important; box-shadow: inset 4px 0 0 0 #eab308; }
         .day-header {
             background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 100%);
             color: #334155;
@@ -50,11 +51,13 @@
 </head>
 <body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans text-slate-800">
 
+    <div id="live-tracker" class="fixed top-0 left-0 w-full bg-yellow-400 text-yellow-900 font-bold p-3 text-center shadow-lg z-50 transition-transform duration-500 -translate-y-full flex items-center justify-center gap-2 no-print border-b-4 border-yellow-500 tracking-wide text-sm md:text-base"></div>
+
     <div class="max-w-[1280px] mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-200" id="main-container">
         <div class="bg-slate-900 p-6 text-white flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
                 <h1 class="text-2xl md:text-3xl font-bold tracking-wider">📅 智能行程分組系統</h1>
-                <p class="text-slate-400 text-sm mt-1">v13.1 - 支援行程最下方附加圖片上傳與管理 (PDF智慧防切斷)</p>
+                <p class="text-slate-400 text-sm mt-1">v13.2 - 支援動態幣別新增與自適應匯率</p>
             </div>
             
             <div class="flex flex-wrap items-center gap-3">
@@ -70,6 +73,23 @@
                 <button onclick="clearAllData()" class="text-sm bg-red-700 text-white px-4 py-2 rounded hover:bg-red-600 transition shadow border border-red-500">
                     🗑️ 重置全部
                 </button>
+            </div>
+        </div>
+
+        <div class="bg-slate-800 p-3 px-6 border-t border-slate-700 text-white text-sm flex flex-wrap gap-4 items-center no-print" id="currency-bar">
+            <span class="font-bold text-slate-300">💱 匯率設定：</span>
+            
+            <div id="dynamic-rates-container" class="flex flex-wrap gap-2 items-center">
+                </div>
+            
+            <button onclick="addCurrency()" class="bg-slate-600 hover:bg-slate-500 text-xs px-2 py-1.5 rounded transition shadow font-bold flex items-center gap-1">
+                ＋ 新增幣別
+            </button>
+            
+            <div class="border-l border-slate-600 pl-4 flex flex-wrap items-center gap-2">
+                <span class="font-bold text-slate-300">主幣別：</span>
+                <input type="text" id="base_currency_code" placeholder="代碼" class="w-14 p-1 text-black rounded text-center outline-none font-bold uppercase" onchange="saveRatesToLocalStorage()">
+                <input type="text" id="base_currency_symbol" placeholder="符號" class="w-10 p-1 text-black rounded text-center outline-none font-bold" onchange="saveRatesToLocalStorage()">
             </div>
         </div>
 
@@ -113,11 +133,29 @@
                     </div>
                     
                     <div class="lg:col-span-2">
-                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">費用 (選填/日幣)</label>
-                        <input type="number" id="input_cost" placeholder="0" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">費用 & 幣別</label>
+                        <div class="flex gap-1">
+                            <input type="number" id="input_cost" placeholder="0" class="w-2/3 p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                            <select id="input_currency" class="w-1/3 p-1 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px] bg-white font-bold text-slate-700 text-sm">
+                                <!-- 由 JS 動態生成 -->
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">分類</label>
+                        <select id="input_category" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px] bg-white font-bold text-slate-700">
+                            <option value="其他">其他</option>
+                            <option value="機票">機票</option>
+                            <option value="住宿">住宿</option>
+                            <option value="交通">交通</option>
+                            <option value="餐飲">餐飲</option>
+                            <option value="門票">門票</option>
+                            <option value="購物">購物</option>
+                        </select>
                     </div>
 
-                    <div class="lg:col-span-8">
+                    <div class="lg:col-span-6">
                         <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">備註 (選填)</label>
                         <input type="text" id="input_notes" placeholder="訂位代號、注意事項..." class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
                     </div>
@@ -133,33 +171,52 @@
                 </div>
             </div>
 
-            <div id="pdf-area" class="bg-white p-8 border border-slate-200 rounded-lg shadow-inner min-w-[800px]">
-                <div class="flex justify-between items-end border-b-4 border-slate-800 pb-4 mb-4">
+            <div id="pdf-area" class="bg-white p-4 md:p-8 border border-slate-200 rounded-lg shadow-inner w-full">
+                <div class="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b-4 border-slate-800 pb-4 mb-3 gap-4 sm:gap-0">
                     <div>
                         <h2 class="text-4xl font-black text-slate-800 italic tracking-tighter">TRAVEL PLAN</h2>
                         <p class="text-slate-400 text-sm mt-1 font-mono">Sorted by Date & Time</p>
                     </div>
-                    <div class="text-right">
+                    <div class="text-left sm:text-right">
                         <div class="text-xs text-slate-400 uppercase font-bold">Total Budget</div>
-                        <div class="text-3xl font-black text-orange-600">¥ <span id="total-amount">0</span></div>
+                        <div class="text-3xl font-black text-orange-600"><span id="total-currency" class="text-2xl mr-1">¥</span><span id="total-amount">0</span></div>
                     </div>
                 </div>
+
+                <div id="expense-chart" class="w-full h-3 bg-slate-100 rounded-full flex overflow-hidden mb-2 shadow-inner"></div>
+                <div id="expense-legend" class="flex flex-wrap gap-3 text-xs text-slate-500 font-bold mb-6"></div>
                 
-                <table class="w-full text-left border-collapse mb-8">
+                <div class="overflow-x-auto print:overflow-visible mb-8">
+                    <table class="w-full text-left border-collapse min-w-[800px]">
                     <thead>
                         <tr class="bg-slate-800 text-white text-xs uppercase font-bold">
                             <th class="p-3 w-[10%] text-center">時間</th>
-                            <th class="p-3 w-[25%]">目的地</th>
-                            <th class="p-3 w-[10%]">交通</th>
-                            <th class="p-3 w-[10%] text-center">車程</th>
-                            <th class="p-3 w-[10%] text-right">費用(¥)</th>
-                            <th class="p-3 w-[25%] pl-6 border-l border-slate-600">備註</th>
+                            <th class="p-3 w-[20%]">目的地</th>
+                            <th class="p-3 w-[8%]">交通</th>
+                            <th class="p-3 w-[8%] text-center">車程</th>
+                            <th class="p-3 w-[14%] text-right">費用</th>
+                            <th class="p-3 w-[8%] text-center">分類</th>
+                            <th class="p-3 w-[22%] pl-6 border-l border-slate-600">備註</th>
                             <th class="p-3 w-[10%] text-center no-print">功能</th>
                         </tr>
                     </thead>
                     <tbody id="itinerary-list" class="divide-y divide-slate-100">
                     </tbody>
                 </table>
+                </div>
+
+                <div id="packing-area" class="border-t-2 border-dashed border-slate-300 pt-6 mt-6 mb-8">
+                    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-4 gap-2">
+                        <h3 class="text-lg font-bold text-slate-700 flex items-center gap-2">🎒 行李與待辦清單</h3>
+                        <button onclick="loadPackingTemplate()" class="text-xs bg-indigo-100 text-indigo-700 px-3 py-1.5 rounded font-bold hover:bg-indigo-200 no-print transition">📋 載入出國必備範本</button>
+                    </div>
+                    <div class="flex gap-2 mb-5 no-print">
+                        <input type="text" id="packing-input" placeholder="新增待辦事項 (例如: 買網卡、護照...)" class="flex-1 p-2 border border-slate-300 rounded outline-none focus:border-indigo-500 shadow-inner" onkeypress="if(event.key==='Enter') addPackingItem()">
+                        <button onclick="addPackingItem()" class="bg-indigo-600 text-white px-5 rounded font-bold hover:bg-indigo-700 transition shadow">新增</button>
+                    </div>
+                    <ul id="packing-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-6 text-sm font-bold text-slate-700">
+                        </ul>
+                </div>
 
                 <div id="attachments-area" class="border-t-2 border-dashed border-slate-300 pt-6">
                     <h3 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
@@ -191,16 +248,33 @@
     <script>
         const STORAGE_KEY = 'my_travel_plan_v12';
         const TRANSPORT_KEY = 'my_travel_plan_transports';
-        const IMAGES_KEY = 'my_travel_plan_images'; // 圖片快取金鑰
+        const IMAGES_KEY = 'my_travel_plan_images'; 
+        const PACKING_KEY = 'my_travel_plan_packing';
+        const RATES_KEY = 'my_travel_plan_rates_v13'; 
+
         let itineraryData = []; 
         let transportOptions = [];
-        let uploadedImages = []; // 存放圖片 Base64 字串的陣列
+        let uploadedImages = []; 
+        let packingList = [];
+
+        // 預設為日幣為主幣別，並設定相對匯率 (以 1 當地幣 = 多少日幣 為基準計算)
+        let currencyData = {
+            baseCode: 'JPY',
+            baseSymbol: '¥',
+            rates: {
+                'TWD': 4.8,  // 1 TWD = 約 4.8 JPY
+                'THB': 4.3,  // 1 THB = 約 4.3 JPY
+                'NZD': 90.0  // 1 NZD = 約 90.0 JPY
+            }
+        };
 
         window.onload = function() {
             initDateAndTime();
             initTransports();
+            loadRatesFromLocalStorage(); // 初始化匯率系統
             loadFromStorage();
             loadImagesFromStorage();
+            loadPackingFromStorage();
         };
 
         function initDateAndTime() {
@@ -217,6 +291,100 @@
                 const val = String(i).padStart(2, '0');
                 minSelect.add(new Option(val, val));
             }
+        }
+
+        // ==========================
+        // 動態匯率系統
+        // ==========================
+        function loadRatesFromLocalStorage() {
+            const saved = localStorage.getItem(RATES_KEY);
+            if (saved) {
+                try {
+                    currencyData = JSON.parse(saved);
+                } catch(e) {}
+            }
+            renderCurrencyUI();
+        }
+
+        function saveRatesToLocalStorage() {
+            currencyData.baseCode = document.getElementById('base_currency_code').value.toUpperCase() || 'JPY';
+            currencyData.baseSymbol = document.getElementById('base_currency_symbol').value || '¥';
+            localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
+            populateCurrencyDropdown();
+            refreshTable();
+        }
+
+        function renderCurrencyUI() {
+            const container = document.getElementById('dynamic-rates-container');
+            container.innerHTML = '';
+            
+            for (let code in currencyData.rates) {
+                const wrapper = document.createElement('label');
+                wrapper.className = "flex items-center gap-1 text-slate-300 bg-slate-700 px-2 py-1 rounded shadow-inner";
+                wrapper.innerHTML = `
+                    <span class="font-bold text-xs">${code}</span>
+                    <input type="number" value="${currencyData.rates[code]}" step="0.01" class="w-14 p-1 text-black rounded text-center outline-none font-bold text-sm" onchange="updateRate('${code}', this.value)">
+                    <button type="button" onclick="removeCurrency('${code}')" class="text-slate-400 hover:text-red-400 ml-1 font-bold transition">✕</button>
+                `;
+                container.appendChild(wrapper);
+            }
+            
+            document.getElementById('base_currency_code').value = currencyData.baseCode;
+            document.getElementById('base_currency_symbol').value = currencyData.baseSymbol;
+            populateCurrencyDropdown();
+        }
+
+        function updateRate(code, val) {
+            currencyData.rates[code] = parseFloat(val) || 1;
+            saveRatesToLocalStorage();
+        }
+
+        function addCurrency() {
+            const code = prompt("請輸入新的幣別代碼 (例如：USD, KRW)：");
+            if (code && code.trim() !== "") {
+                const upperCode = code.trim().toUpperCase();
+                if (!currencyData.rates[upperCode] && upperCode !== currencyData.baseCode) {
+                    currencyData.rates[upperCode] = 1.0;
+                    saveRatesToLocalStorage();
+                    renderCurrencyUI();
+                } else if (upperCode === currencyData.baseCode) {
+                    alert("該幣別已經是主幣別！");
+                }
+            }
+        }
+
+        function removeCurrency(code) {
+            if (confirm(`確定要移除「${code}」的匯率設定嗎？`)) {
+                delete currencyData.rates[code];
+                saveRatesToLocalStorage();
+                renderCurrencyUI();
+            }
+        }
+
+        function populateCurrencyDropdown() {
+            const select = document.getElementById('input_currency');
+            const currentVal = select.value;
+            select.innerHTML = `<option value="${currencyData.baseCode}">${currencyData.baseCode}</option>`;
+            
+            for (let code in currencyData.rates) {
+                select.add(new Option(code, code));
+            }
+            
+            // 保留原本選擇的值，或是預設為主幣別
+            if (currentVal && (currentVal === currencyData.baseCode || currencyData.rates[currentVal])) {
+                select.value = currentVal;
+            } else {
+                select.value = currencyData.baseCode;
+            }
+        }
+
+        function toBaseCurrency(amount, currency) {
+            if (!amount) return 0;
+            if (currency === currencyData.baseCode) return amount;
+            if (currencyData.rates[currency]) {
+                return amount * currencyData.rates[currency];
+            }
+            return amount; 
         }
 
         // ==========================
@@ -278,27 +446,20 @@
         }
 
         // ==========================
-        // ★ 新增：圖片上傳與管理邏輯
-        // ==========================
-        // ==========================
-        // ★ 修正版：智慧排序圖片上傳邏輯
+        // 圖片上傳與管理邏輯
         // ==========================
         function handleImageUpload(input) {
             const files = Array.from(input.files);
             if (files.length === 0) return;
 
-            // 建立一個跟上傳檔案一樣長度的空陣列，用來裝讀取好的結果
             const resultsArray = new Array(files.length);
             let loadedCount = 0;
 
             files.forEach((file, index) => {
                 const reader = new FileReader();
                 reader.onload = function(e) {
-                    // ★ 關鍵：不使用 push，而是根據它原本的 index 放入指定位置
                     resultsArray[index] = e.target.result;
                     loadedCount++;
-
-                    // 當所有選取的檔案都讀取完畢後，才合併到全域陣列中
                     if (loadedCount === files.length) {
                         uploadedImages = uploadedImages.concat(resultsArray);
                         saveImagesToStorage();
@@ -307,7 +468,7 @@
                 };
                 reader.readAsDataURL(file);
             });
-            input.value = ''; // 清空欄位
+            input.value = ''; 
         }
 
         function deleteImage(index) {
@@ -328,7 +489,6 @@
             }
 
             uploadedImages.forEach((imgBase64, index) => {
-                // print-img-wrapper 搭配 CSS 中 print 的 break-inside-avoid 確保分頁不腰斬
                 const wrapper = document.createElement('div');
                 wrapper.className = "print-img-wrapper relative border border-slate-200 rounded-lg overflow-hidden bg-slate-50 p-2 shadow-sm";
                 wrapper.innerHTML = `
@@ -357,6 +517,19 @@
                 }
             }
             renderImages();
+        }
+
+        function getCategoryBadge(cat) {
+            const map = {
+                '機票': '<span class="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-800 tracking-widest whitespace-nowrap">機票</span>',
+                '住宿': '<span class="px-2 py-1 text-[11px] rounded bg-purple-100 text-purple-800 tracking-widest whitespace-nowrap">住宿</span>',
+                '交通': '<span class="px-2 py-1 text-[11px] rounded bg-green-100 text-green-800 tracking-widest whitespace-nowrap">交通</span>',
+                '餐飲': '<span class="px-2 py-1 text-[11px] rounded bg-yellow-100 text-yellow-800 tracking-widest whitespace-nowrap">餐飲</span>',
+                '門票': '<span class="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-800 tracking-widest whitespace-nowrap">門票</span>',
+                '購物': '<span class="px-2 py-1 text-[11px] rounded bg-pink-100 text-pink-800 tracking-widest whitespace-nowrap">購物</span>',
+                '其他': '<span class="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-800 tracking-widest whitespace-nowrap">其他</span>'
+            };
+            return map[cat] || map['其他'];
         }
 
         // ==========================
@@ -412,14 +585,14 @@
                 return timeA - timeB;
             });
 
-            let totalCost = 0;
-            itineraryData.forEach(item => totalCost += (parseFloat(item.cost) || 0));
-            document.getElementById('total-amount').innerText = totalCost.toLocaleString();
-
             const tbody = document.getElementById('itinerary-list');
             tbody.innerHTML = '';
 
-            if (itineraryData.length === 0) return;
+            if (itineraryData.length === 0) {
+                calculateExpenses();
+                updateTimeline();
+                return;
+            }
 
             const firstDateStr = itineraryData[0].dateRaw;
             const firstDateObj = new Date(firstDateStr);
@@ -445,17 +618,22 @@
                 }
 
                 const row = document.createElement('tr');
+                row.id = `row-${item.id}`;
                 row.className = "hover:bg-slate-50 transition-colors border-b border-slate-100";
                 if(document.getElementById('edit_id').value === item.id) row.classList.add('editing-row');
 
-                const displayCost = (parseFloat(item.cost) || 0) === 0 ? "0" : parseFloat(item.cost).toLocaleString();
+                const displayCost = (parseFloat(item.cost) || 0) === 0 ? "-" : `<span class="text-[10px] text-slate-400 mr-1">${item.currency||currencyData.baseCode}</span>` + parseFloat(item.cost).toLocaleString();
+                
+                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.dest)}`;
+                const mapBtn = `<a href="${mapUrl}" target="_blank" class="text-blue-400 hover:text-blue-600 ml-1 no-print inline-block transform hover:scale-110 transition" title="Google Maps 導航">🗺️</a>`;
 
                 row.innerHTML = `
                     <td class="p-3 text-center font-black text-slate-800 text-lg font-mono">${item.hour}:${item.min}</td>
-                    <td class="p-3 font-bold text-slate-900 text-lg">${item.dest || "-"}</td>
+                    <td class="p-3 font-bold text-slate-900 text-lg">${item.dest || "-"}${mapBtn}</td>
                     <td class="p-3 text-slate-500 text-sm">${item.transport || "-"}</td>
                     <td class="p-3 text-center text-xs font-bold text-slate-600 bg-yellow-50 rounded">${item.duration || "-"}</td>
                     <td class="p-3 text-right font-mono font-bold text-slate-700">${displayCost}</td>
+                    <td class="p-3 text-center">${getCategoryBadge(item.category || '其他')}</td>
                     <td class="p-3 pl-6 text-sm text-slate-600 border-l italic">${item.notes || ""}</td>
                     <td class="p-3 text-center no-print flex justify-center gap-2">
                         <button onclick="editItem('${item.id}')" class="p-1 text-blue-500 hover:text-blue-700 font-bold">✎</button>
@@ -464,6 +642,44 @@
                 `;
                 tbody.appendChild(row);
             });
+            
+            calculateExpenses();
+            updateTimeline();
+        }
+
+        function calculateExpenses() {
+            let total = 0;
+            let catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲': 0, '門票': 0, '購物': 0, '其他': 0 };
+            
+            itineraryData.forEach(item => {
+                let val = toBaseCurrency(parseFloat(item.cost) || 0, item.currency || currencyData.baseCode);
+                total += val;
+                let cat = item.category || '其他';
+                if(catSum[cat] !== undefined) catSum[cat] += val;
+                else catSum['其他'] += val;
+            });
+
+            document.getElementById('total-amount').innerText = Math.round(total).toLocaleString();
+            document.getElementById('total-currency').innerText = currencyData.baseSymbol;
+
+            const chart = document.getElementById('expense-chart');
+            const legend = document.getElementById('expense-legend');
+            chart.innerHTML = ''; legend.innerHTML = '';
+            if(total === 0) return;
+
+            const styles = { '機票': ['bg-blue-500', 'text-blue-600'], '住宿': ['bg-purple-500', 'text-purple-600'], '交通': ['bg-green-500', 'text-green-600'], '餐飲': ['bg-yellow-500', 'text-yellow-600'], '門票': ['bg-indigo-500', 'text-indigo-600'], '購物': ['bg-pink-500', 'text-pink-600'], '其他': ['bg-slate-500', 'text-slate-600'] };
+
+            for(let cat in catSum) {
+                if(catSum[cat] > 0) {
+                    let pct = (catSum[cat] / total * 100).toFixed(1);
+                    let bar = document.createElement('div');
+                    bar.className = `h-full ${styles[cat][0]}`; bar.style.width = `${pct}%`; bar.title = `${cat}: ${pct}%`;
+                    chart.appendChild(bar);
+                    let leg = document.createElement('div'); leg.className = `flex items-center gap-1`;
+                    leg.innerHTML = `<span class="w-3 h-3 rounded-full ${styles[cat][0]} shadow-sm"></span> <span class="${styles[cat][1]} tracking-widest">${cat} ${pct}%</span>`;
+                    legend.appendChild(leg);
+                }
+            }
         }
 
         function getFormData() {
@@ -477,6 +693,8 @@
                 transport: document.getElementById('input_transport').value || "-",
                 duration: document.getElementById('input_duration').value || "-",
                 cost: parseFloat(document.getElementById('input_cost').value) || 0,
+                currency: document.getElementById('input_currency').value || currencyData.baseCode,
+                category: document.getElementById('input_category').value || "其他",
                 notes: document.getElementById('input_notes').value || ""
             };
         }
@@ -494,7 +712,17 @@
             document.getElementById('input_transport').value = transportVal;
             document.getElementById('input_duration').value = item.duration === '-' ? '' : item.duration;
             document.getElementById('input_cost').value = item.cost;
+            document.getElementById('input_category').value = item.category || '其他';
             document.getElementById('input_notes').value = item.notes;
+
+            // 確保要編輯的幣別存在於選單中
+            const currencyVal = item.currency || currencyData.baseCode;
+            if (!currencyData.rates[currencyVal] && currencyVal !== currencyData.baseCode) {
+                currencyData.rates[currencyVal] = 1.0;
+                saveRatesToLocalStorage();
+                renderCurrencyUI();
+            }
+            document.getElementById('input_currency').value = currencyVal;
 
             const btnArea = document.getElementById('main-btn');
             btnArea.innerHTML = "💾 保存修改";
@@ -519,6 +747,8 @@
             document.getElementById('input_transport').value = '';
             document.getElementById('input_duration').value = '';
             document.getElementById('input_cost').value = '';
+            document.getElementById('input_currency').value = currencyData.baseCode;
+            document.getElementById('input_category').value = '其他';
             document.getElementById('input_notes').value = '';
         }
 
@@ -539,12 +769,62 @@
             }
         }
 
-        // ★ 修改：備份匯出時，連同上傳的圖片一起打包進 JSON，這樣下次讀取舊檔圖片才不會不見
+        // ==========================
+        // 待辦清單邏輯
+        // ==========================
+        function loadPackingFromStorage() {
+            const saved = localStorage.getItem(PACKING_KEY);
+            if (saved) packingList = JSON.parse(saved);
+            renderPackingList();
+        }
+        function savePackingToStorage() { localStorage.setItem(PACKING_KEY, JSON.stringify(packingList)); }
+        function renderPackingList() {
+            const ul = document.getElementById('packing-list'); ul.innerHTML = '';
+            packingList.forEach(item => {
+                const li = document.createElement('li');
+                li.className = "flex items-center gap-2 group p-1 hover:bg-slate-50 rounded transition";
+                li.innerHTML = `
+                    <input type="checkbox" id="pack-${item.id}" ${item.done ? 'checked' : ''} class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer border-slate-300" onchange="togglePacking('${item.id}')">
+                    <label for="pack-${item.id}" class="flex-1 cursor-pointer select-none ${item.done ? 'line-through text-slate-400' : ''}">${item.text}</label>
+                    <button onclick="deletePacking('${item.id}')" class="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition no-print bg-white rounded-full w-5 h-5 flex items-center justify-center font-bold">✕</button>
+                `;
+                ul.appendChild(li);
+            });
+        }
+        function addPackingItem() {
+            const input = document.getElementById('packing-input');
+            const text = input.value.trim();
+            if (!text) return;
+            packingList.push({ id: Date.now().toString(), text, done: false });
+            input.value = ''; savePackingToStorage(); renderPackingList();
+        }
+        function togglePacking(id) {
+            const item = packingList.find(i => i.id === id);
+            if (item) { item.done = !item.done; savePackingToStorage(); renderPackingList(); }
+        }
+        function deletePacking(id) {
+            packingList = packingList.filter(i => i.id !== id);
+            savePackingToStorage(); renderPackingList();
+        }
+        function loadPackingTemplate() {
+            if(confirm("將附加出國必備清單至目前的列表中，確定嗎？")) {
+                const templates = ["護照 (效期>6個月)", "簽證/入境申請表", "當地網卡/eSIM", "萬國轉接頭", "行動電源與充電線", "常備藥品 (腸胃/感冒)", "信用卡與外幣現金", "換洗衣物與外套", "個人盥洗/防曬用品", "旅平險保單憑證"];
+                templates.forEach(text => {
+                    if(!packingList.some(i => i.text === text)) {
+                        packingList.push({ id: Math.random().toString(36).substr(2, 9), text, done: false });
+                    }
+                });
+                savePackingToStorage(); renderPackingList();
+            }
+        }
+
         function exportData() {
-            if (itineraryData.length === 0 && uploadedImages.length === 0) { alert("沒有資料可匯出"); return; }
+            if (itineraryData.length === 0 && uploadedImages.length === 0 && packingList.length === 0) { alert("沒有資料可匯出"); return; }
             const packageData = {
                 itinerary: itineraryData,
-                images: uploadedImages
+                images: uploadedImages,
+                packing: packingList,
+                rates: currencyData
             };
             const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
@@ -553,7 +833,6 @@
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
         }
 
-        // ★ 修改：讀取備份時，自動判斷是舊版純行程 JSON 還是新版含圖片的 JSON
         function importData(input) {
             const file = input.files[0]; if (!file) return;
             const reader = new FileReader();
@@ -566,16 +845,25 @@
                             itineraryData = fixMissingIds(parsed); 
                             uploadedImages = [];
                         } else if (parsed.itinerary) {
-                            // 新版複合包資料
                             itineraryData = fixMissingIds(parsed.itinerary);
                             uploadedImages = parsed.images || [];
+                            packingList = parsed.packing || [];
+                            if (parsed.rates) {
+                                if(parsed.rates.baseCode) {
+                                    currencyData = parsed.rates;
+                                }
+                                saveRatesToLocalStorage();
+                                renderCurrencyUI(); // 更新介面
+                            }
                         } else {
                             throw new Error();
                         }
                         refreshTable(); 
                         renderImages();
+                        renderPackingList();
                         saveToStorage();
                         saveImagesToStorage();
+                        savePackingToStorage();
                     }
                 } catch(err) { alert("檔案格式錯誤，無法正確解析"); }
                 input.value = '';
@@ -591,21 +879,56 @@
             if(confirm("確定要清空所有行程與圖片嗎？")) { 
                 itineraryData = []; 
                 uploadedImages = [];
+                packingList = [];
                 refreshTable(); 
                 renderImages();
+                renderPackingList();
                 saveToStorage(); 
                 saveImagesToStorage();
+                savePackingToStorage();
             }
         }
 
-        // 提示小動畫
         function showSaveStatus() {
             const status = document.getElementById('save-status');
             status.style.opacity = '1'; status.classList.remove('save-toast');
             void status.offsetWidth; status.classList.add('save-toast');
         }
+        
+        function updateTimeline() {
+            const now = new Date();
+            let nextItem = null;
+            let currentItem = null;
+            
+            for(let i=0; i<itineraryData.length; i++) {
+                const item = itineraryData[i];
+                const itemTime = new Date(`${item.dateRaw}T${item.hour}:${item.min}`);
+                if (itemTime > now) {
+                    nextItem = item;
+                    if (i > 0 && itineraryData[i-1].dateRaw === item.dateRaw) currentItem = itineraryData[i-1];
+                    break;
+                }
+            }
 
-        // 呼叫瀏覽器強大的原生列印引擎匯出 PDF
+            document.querySelectorAll('.current-item').forEach(el => el.classList.remove('current-item'));
+            if (currentItem) {
+                const row = document.getElementById(`row-${currentItem.id}`);
+                if (row) row.classList.add('current-item');
+            }
+
+            const tracker = document.getElementById('live-tracker');
+            if (nextItem) {
+                const diffMs = new Date(`${nextItem.dateRaw}T${nextItem.hour}:${nextItem.min}`) - now;
+                const hrs = Math.floor(diffMs / 3600000); const mins = Math.floor((diffMs % 3600000) / 60000);
+                if (hrs < 24) {
+                    tracker.innerHTML = `📍 距離下一個行程「<span class="underline underline-offset-4">${nextItem.dest}</span>」還有 <span class="text-xl mx-1">${hrs > 0 ? hrs + ' 小時 ' : ''}${mins} 分鐘</span>`;
+                    tracker.classList.remove('-translate-y-full'); tracker.classList.add('translate-y-0');
+                    return;
+                }
+            }
+            tracker.classList.add('-translate-y-full'); tracker.classList.remove('translate-y-0');
+        }
+
         function generatePDF() {
             window.print();
         }
