@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>旅遊行程規劃助手 v13.1 (原生列印＋附圖管理版)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .editing-row { background-color: #fff7ed !important; border-left: 4px solid #f97316; }
+        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+        .save-toast { animation: fadeOut 2s forwards; animation-delay: 1s; }
+        .day-header {
+            background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 100%);
+            color: #334155;
+            font-weight: 800;
+            letter-spacing: 0.05em;
+        }
+        
+        /* ==========================================
+           列印專用 CSS：隱藏不必要的元素，並確保 PDF 完美排版
+           ========================================== */
+        @media print {
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; }
+            #input-area, .no-print, .bg-slate-900, button { display: none !important; }
+            #pdf-area {
+                border: none !important;
+                box-shadow: none !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                min-width: 100% !important;
+                width: 100% !important;
+            }
+            /* 避免表格的行、日期標題從中間被腰斬 */
+            tr, .day-header { 
+                page-break-inside: avoid !important; 
+                break-inside: avoid !important; 
+            }
+            /* ★ 關鍵：避免最下方的圖片從中間被跨頁切斷 */
+            .print-img-wrapper {
+                page-break-inside: avoid !important;
+                break-inside: avoid !important;
+            }
+            thead { display: table-header-group !important; }
+        }
+    </style>
+</head>
+<body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans text-slate-800">
+
+    <div class="max-w-[1280px] mx-auto bg-white shadow-2xl rounded-2xl overflow-hidden border border-slate-200" id="main-container">
+        <div class="bg-slate-900 p-6 text-white flex flex-col md:flex-row justify-between items-center gap-4">
+            <div>
+                <h1 class="text-2xl md:text-3xl font-bold tracking-wider">📅 智能行程分組系統</h1>
+                <p class="text-slate-400 text-sm mt-1">v13.1 - 支援行程最下方附加圖片上傳與管理 (PDF智慧防切斷)</p>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-3">
+                <span id="save-status" class="text-green-400 text-xs font-bold opacity-0 transition-opacity mr-2">✅ 已儲存</span>
+                
+                <input type="file" id="fileInput" accept=".json" class="hidden" onchange="importData(this)">
+                <button onclick="document.getElementById('fileInput').click()" class="text-sm bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500 transition shadow flex items-center gap-1">
+                    📂 讀取 JSON
+                </button>
+                <button onclick="exportData()" class="text-sm bg-teal-600 text-white px-4 py-2 rounded hover:bg-teal-500 transition shadow flex items-center gap-1">
+                    💾 匯出備份
+                </button>
+                <button onclick="clearAllData()" class="text-sm bg-red-700 text-white px-4 py-2 rounded hover:bg-red-600 transition shadow border border-red-500">
+                    🗑️ 重置全部
+                </button>
+            </div>
+        </div>
+
+        <div class="p-6">
+            <div id="input-area" class="bg-slate-50 p-6 rounded-xl border border-slate-200 mb-8 shadow-sm transition-all duration-300">
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
+                    <input type="hidden" id="edit_id" value="">
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">日期 *</label>
+                        <input type="date" id="input_date" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                    </div>
+
+                    <div class="lg:col-span-3">
+                        <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">時間 *</label>
+                        <div class="flex items-center gap-1">
+                            <select id="input_hour" class="w-1/2 p-2 border border-slate-300 rounded focus:border-orange-500 outline-none bg-white h-[42px] text-center text-lg"></select>
+                            <span class="font-bold text-slate-400">:</span>
+                            <select id="input_min" class="w-1/2 p-2 border border-slate-300 rounded focus:border-orange-500 outline-none bg-white h-[42px] text-center text-lg"></select>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-3">
+                        <label class="block text-xs font-bold text-slate-500 mb-1 uppercase">目的地 *</label>
+                        <input type="text" id="input_dest" placeholder="必填" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">交通 (選填)</label>
+                        <div class="flex items-center gap-1">
+                            <select id="input_transport" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px] bg-white">
+                            </select>
+                            <button type="button" onclick="addCustomTransport()" class="h-[42px] px-3 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition font-bold" title="新增交通方式">＋</button>
+                            <button type="button" onclick="removeSelectedTransport()" class="h-[42px] px-3 bg-red-100 text-red-500 rounded hover:bg-red-200 transition font-bold" title="刪除選定的交通方式">－</button>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">車程 (選填)</label>
+                        <input type="text" id="input_duration" placeholder="30分" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                    </div>
+                    
+                    <div class="lg:col-span-2">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">費用 (選填/日幣)</label>
+                        <input type="number" id="input_cost" placeholder="0" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                    </div>
+
+                    <div class="lg:col-span-8">
+                        <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">備註 (選填)</label>
+                        <input type="text" id="input_notes" placeholder="訂位代號、注意事項..." class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
+                    </div>
+                    
+                    <div class="lg:col-span-2 flex items-end">
+                        <button id="main-btn" onclick="handleFormSubmit()" class="w-full bg-slate-800 text-white font-bold h-[42px] rounded hover:bg-black transition shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                            <span>＋</span> 加入行程
+                        </button>
+                    </div>
+                    <div class="lg:col-span-12 hidden" id="cancel-edit-area">
+                        <button onclick="cancelEdit()" class="text-sm text-red-500 hover:underline">放棄修改，回到新增模式</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="pdf-area" class="bg-white p-8 border border-slate-200 rounded-lg shadow-inner min-w-[800px]">
+                <div class="flex justify-between items-end border-b-4 border-slate-800 pb-4 mb-4">
+                    <div>
+                        <h2 class="text-4xl font-black text-slate-800 italic tracking-tighter">TRAVEL PLAN</h2>
+                        <p class="text-slate-400 text-sm mt-1 font-mono">Sorted by Date & Time</p>
+                    </div>
+                    <div class="text-right">
+                        <div class="text-xs text-slate-400 uppercase font-bold">Total Budget</div>
+                        <div class="text-3xl font-black text-orange-600">¥ <span id="total-amount">0</span></div>
+                    </div>
+                </div>
+                
+                <table class="w-full text-left border-collapse mb-8">
+                    <thead>
+                        <tr class="bg-slate-800 text-white text-xs uppercase font-bold">
+                            <th class="p-3 w-[10%] text-center">時間</th>
+                            <th class="p-3 w-[25%]">目的地</th>
+                            <th class="p-3 w-[10%]">交通</th>
+                            <th class="p-3 w-[10%] text-center">車程</th>
+                            <th class="p-3 w-[10%] text-right">費用(¥)</th>
+                            <th class="p-3 w-[25%] pl-6 border-l border-slate-600">備註</th>
+                            <th class="p-3 w-[10%] text-center no-print">功能</th>
+                        </tr>
+                    </thead>
+                    <tbody id="itinerary-list" class="divide-y divide-slate-100">
+                    </tbody>
+                </table>
+
+                <div id="attachments-area" class="border-t-2 border-dashed border-slate-300 pt-6">
+                    <h3 class="text-lg font-bold text-slate-700 mb-4 flex items-center gap-2">
+                        📎 附加圖片與憑證 <span class="text-xs text-slate-400 font-normal no-print">(如機票、QR Code、住宿收據，可上傳多張)</span>
+                    </h3>
+                    
+                    <div class="mb-4 no-print">
+                        <input type="file" id="imgUploadInput" accept="image/*" multiple class="hidden" onchange="handleImageUpload(this)">
+                        <button onclick="document.getElementById('imgUploadInput').click()" class="text-sm bg-slate-600 text-white font-bold py-2 px-4 rounded hover:bg-slate-700 transition shadow">
+                            📷 上傳圖片
+                        </button>
+                    </div>
+
+                    <div id="image-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        </div>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center flex justify-center gap-4 no-print">
+                <button onclick="generatePDF()" class="bg-green-600 text-white font-bold py-3 px-10 rounded-full shadow-xl hover:bg-green-700 transition flex items-center gap-2 hover:-translate-y-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    生成 PDF (另存為PDF)
+                </button>
+            </div>
+            <p class="text-center text-slate-400 text-sm mt-3 no-print">💡 點擊後，請在列印畫面選擇「另存為 PDF」即可完美匯出！</p>
+        </div>
+    </div>
+
+    <script>
+        const STORAGE_KEY = 'my_travel_plan_v12';
+        const TRANSPORT_KEY = 'my_travel_plan_transports';
+        const IMAGES_KEY = 'my_travel_plan_images'; // 圖片快取金鑰
+        let itineraryData = []; 
+        let transportOptions = [];
+        let uploadedImages = []; // 存放圖片 Base64 字串的陣列
+
+        window.onload = function() {
+            initDateAndTime();
+            initTransports();
+            loadFromStorage();
+            loadImagesFromStorage();
+        };
+
+        function initDateAndTime() {
+            const today = new Date();
+            document.getElementById('input_date').value = today.toISOString().split('T')[0];
+            const hourSelect = document.getElementById('input_hour');
+            for (let i = 0; i < 24; i++) {
+                const val = String(i).padStart(2, '0');
+                hourSelect.add(new Option(val, val));
+            }
+            hourSelect.value = "09"; 
+            const minSelect = document.getElementById('input_min');
+            for (let i = 0; i < 60; i += 5) {
+                const val = String(i).padStart(2, '0');
+                minSelect.add(new Option(val, val));
+            }
+        }
+
+        // ==========================
+        // 交通方式選單管理
+        // ==========================
+        function initTransports() {
+            const defaultTransports = ["捷運", "公車", "開車", "火車", "高鐵", "步行", "飛機", "船"];
+            const saved = localStorage.getItem(TRANSPORT_KEY);
+            if (saved) {
+                transportOptions = JSON.parse(saved);
+            } else {
+                transportOptions = [...defaultTransports];
+            }
+            renderTransportSelect();
+        }
+
+        function renderTransportSelect() {
+            const select = document.getElementById('input_transport');
+            const currentVal = select.value; 
+            select.innerHTML = '<option value="">請選擇</option>';
+            transportOptions.forEach(opt => {
+                select.add(new Option(opt, opt));
+            });
+            if (transportOptions.includes(currentVal)) select.value = currentVal;
+            else select.value = "";
+        }
+
+        function saveTransportOptions() {
+            localStorage.setItem(TRANSPORT_KEY, JSON.stringify(transportOptions));
+        }
+
+        function addCustomTransport() {
+            const custom = prompt("請輸入新的交通方式：");
+            if (custom && custom.trim() !== "") {
+                const val = custom.trim();
+                ensureTransportOptionExists(val);
+                document.getElementById('input_transport').value = val;
+            }
+        }
+
+        function removeSelectedTransport() {
+            const select = document.getElementById('input_transport');
+            const val = select.value;
+            if (!val) { alert("請先選擇一個交通方式！"); return; }
+            if (confirm(`確定要刪除「${val}」選單嗎？`)) {
+                transportOptions = transportOptions.filter(opt => opt !== val);
+                saveTransportOptions();
+                renderTransportSelect();
+            }
+        }
+
+        function ensureTransportOptionExists(val) {
+            if (!val || val === '-') return;
+            if (!transportOptions.includes(val)) {
+                transportOptions.push(val);
+                saveTransportOptions();
+                renderTransportSelect();
+            }
+        }
+
+        // ==========================
+        // ★ 新增：圖片上傳與管理邏輯
+        // ==========================
+        // ==========================
+        // ★ 修正版：智慧排序圖片上傳邏輯
+        // ==========================
+        function handleImageUpload(input) {
+            const files = Array.from(input.files);
+            if (files.length === 0) return;
+
+            // 建立一個跟上傳檔案一樣長度的空陣列，用來裝讀取好的結果
+            const resultsArray = new Array(files.length);
+            let loadedCount = 0;
+
+            files.forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    // ★ 關鍵：不使用 push，而是根據它原本的 index 放入指定位置
+                    resultsArray[index] = e.target.result;
+                    loadedCount++;
+
+                    // 當所有選取的檔案都讀取完畢後，才合併到全域陣列中
+                    if (loadedCount === files.length) {
+                        uploadedImages = uploadedImages.concat(resultsArray);
+                        saveImagesToStorage();
+                        renderImages();
+                    }
+                };
+                reader.readAsDataURL(file);
+            });
+            input.value = ''; // 清空欄位
+        }
+
+        function deleteImage(index) {
+            if (confirm("確定要刪除這張圖片嗎？")) {
+                uploadedImages.splice(index, 1);
+                saveImagesToStorage();
+                renderImages();
+            }
+        }
+
+        function renderImages() {
+            const grid = document.getElementById('image-grid');
+            grid.innerHTML = '';
+
+            if (uploadedImages.length === 0) {
+                grid.innerHTML = '<p class="text-slate-400 text-sm italic col-span-2 py-4 text-center no-print">目前尚無附加圖片</p>';
+                return;
+            }
+
+            uploadedImages.forEach((imgBase64, index) => {
+                // print-img-wrapper 搭配 CSS 中 print 的 break-inside-avoid 確保分頁不腰斬
+                const wrapper = document.createElement('div');
+                wrapper.className = "print-img-wrapper relative border border-slate-200 rounded-lg overflow-hidden bg-slate-50 p-2 shadow-sm";
+                wrapper.innerHTML = `
+                    <button onclick="deleteImage(${index})" class="no-print absolute top-3 right-3 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold hover:bg-red-700 shadow transition" title="刪除圖片">✕</button>
+                    <img src="${imgBase64}" class="w-full h-auto object-contain max-h-[500px] mx-auto rounded" alt="行程附件">
+                `;
+                grid.appendChild(wrapper);
+            });
+        }
+
+        function saveImagesToStorage() {
+            try {
+                localStorage.setItem(IMAGES_KEY, JSON.stringify(uploadedImages));
+            } catch(e) {
+                alert("圖片體積過大，已超出瀏覽器 LocalStorage 快取上限！\n但這不影響當前列印，建議匯出 JSON 做完整備份。");
+            }
+        }
+
+        function loadImagesFromStorage() {
+            const saved = localStorage.getItem(IMAGES_KEY);
+            if (saved) {
+                try {
+                    uploadedImages = JSON.parse(saved);
+                } catch(e) {
+                    uploadedImages = [];
+                }
+            }
+            renderImages();
+        }
+
+        // ==========================
+        // 核心邏輯
+        // ==========================
+        function handleFormSubmit() {
+            const editId = document.getElementById('edit_id').value;
+            if (editId) saveEdit(editId);
+            else addItem();
+        }
+
+        function addItem() {
+            const data = getFormData();
+            if (!data) return;
+            data.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
+            itineraryData.push(data);
+            refreshTable();
+            clearForm(true);
+            saveToStorage();
+        }
+
+        function saveEdit(id) {
+            const data = getFormData();
+            if (!data) return;
+            data.id = id; 
+            const index = itineraryData.findIndex(item => item.id === id);
+            if (index !== -1) {
+                itineraryData[index] = data;
+                refreshTable();
+                cancelEdit();
+                saveToStorage();
+            }
+        }
+
+        function deleteItem(id) {
+            if(confirm("確定刪除此行程嗎？")) {
+                itineraryData = itineraryData.filter(item => item.id !== id);
+                refreshTable();
+                if (document.getElementById('edit_id').value === id) cancelEdit();
+                saveToStorage();
+            }
+        }
+
+        function refreshTable() {
+            itineraryData.forEach(item => {
+                const transportVal = item.transport === '-' ? '' : item.transport;
+                ensureTransportOptionExists(transportVal);
+            });
+
+            itineraryData.sort((a, b) => {
+                const timeA = new Date(`${a.dateRaw}T${a.hour}:${a.min}`).getTime();
+                const timeB = new Date(`${b.dateRaw}T${b.hour}:${b.min}`).getTime();
+                return timeA - timeB;
+            });
+
+            let totalCost = 0;
+            itineraryData.forEach(item => totalCost += (parseFloat(item.cost) || 0));
+            document.getElementById('total-amount').innerText = totalCost.toLocaleString();
+
+            const tbody = document.getElementById('itinerary-list');
+            tbody.innerHTML = '';
+
+            if (itineraryData.length === 0) return;
+
+            const firstDateStr = itineraryData[0].dateRaw;
+            const firstDateObj = new Date(firstDateStr);
+            let lastDateStr = null;
+
+            itineraryData.forEach(item => {
+                if (item.dateRaw !== lastDateStr) {
+                    const currentDateObj = new Date(item.dateRaw);
+                    const diffTime = Math.abs(currentDateObj - firstDateObj);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
+                    const weekdays = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
+                    const weekday = weekdays[currentDateObj.getDay()];
+
+                    const separatorRow = document.createElement('tr');
+                    separatorRow.className = "day-header border-t-2 border-slate-300";
+                    separatorRow.innerHTML = `
+                        <td colspan="7" class="py-3 px-4 text-lg">
+                            📅 第 ${diffDays} 天 - <span class="font-normal text-slate-600 text-base">${item.dateRaw.replace(/-/g, '/')} (${weekday})</span>
+                        </td>
+                    `;
+                    tbody.appendChild(separatorRow);
+                    lastDateStr = item.dateRaw;
+                }
+
+                const row = document.createElement('tr');
+                row.className = "hover:bg-slate-50 transition-colors border-b border-slate-100";
+                if(document.getElementById('edit_id').value === item.id) row.classList.add('editing-row');
+
+                const displayCost = (parseFloat(item.cost) || 0) === 0 ? "0" : parseFloat(item.cost).toLocaleString();
+
+                row.innerHTML = `
+                    <td class="p-3 text-center font-black text-slate-800 text-lg font-mono">${item.hour}:${item.min}</td>
+                    <td class="p-3 font-bold text-slate-900 text-lg">${item.dest || "-"}</td>
+                    <td class="p-3 text-slate-500 text-sm">${item.transport || "-"}</td>
+                    <td class="p-3 text-center text-xs font-bold text-slate-600 bg-yellow-50 rounded">${item.duration || "-"}</td>
+                    <td class="p-3 text-right font-mono font-bold text-slate-700">${displayCost}</td>
+                    <td class="p-3 pl-6 text-sm text-slate-600 border-l italic">${item.notes || ""}</td>
+                    <td class="p-3 text-center no-print flex justify-center gap-2">
+                        <button onclick="editItem('${item.id}')" class="p-1 text-blue-500 hover:text-blue-700 font-bold">✎</button>
+                        <button onclick="deleteItem('${item.id}')" class="p-1 text-red-300 hover:text-red-500 font-bold">✕</button>
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function getFormData() {
+            const dateVal = document.getElementById('input_date').value;
+            const hourVal = document.getElementById('input_hour').value;
+            const minVal = document.getElementById('input_min').value;
+            const destVal = document.getElementById('input_dest').value;
+            if (!dateVal || !destVal) { alert("請填寫日期與目的地！"); return null; }
+            return {
+                dateRaw: dateVal, hour: hourVal, min: minVal, dest: destVal,
+                transport: document.getElementById('input_transport').value || "-",
+                duration: document.getElementById('input_duration').value || "-",
+                cost: parseFloat(document.getElementById('input_cost').value) || 0,
+                notes: document.getElementById('input_notes').value || ""
+            };
+        }
+
+        function editItem(id) {
+            const item = itineraryData.find(d => d.id === id);
+            if (!item) return;
+            document.getElementById('edit_id').value = id;
+            document.getElementById('input_date').value = item.dateRaw;
+            document.getElementById('input_hour').value = item.hour;
+            document.getElementById('input_min').value = item.min;
+            document.getElementById('input_dest').value = item.dest;
+            const transportVal = item.transport === '-' ? '' : item.transport;
+            ensureTransportOptionExists(transportVal);
+            document.getElementById('input_transport').value = transportVal;
+            document.getElementById('input_duration').value = item.duration === '-' ? '' : item.duration;
+            document.getElementById('input_cost').value = item.cost;
+            document.getElementById('input_notes').value = item.notes;
+
+            const btnArea = document.getElementById('main-btn');
+            btnArea.innerHTML = "💾 保存修改";
+            btnArea.classList.replace('bg-slate-800', 'bg-orange-600');
+            document.getElementById('cancel-edit-area').classList.remove('hidden');
+            document.getElementById('input-area').scrollIntoView({ behavior: 'smooth' });
+            refreshTable();
+        }
+
+        function cancelEdit() {
+            document.getElementById('edit_id').value = "";
+            const btnArea = document.getElementById('main-btn');
+            btnArea.innerHTML = "<span>＋</span> 加入行程";
+            btnArea.classList.replace('bg-orange-600', 'bg-slate-800');
+            document.getElementById('cancel-edit-area').classList.add('hidden');
+            clearForm(true);
+            refreshTable();
+        }
+
+        function clearForm(keepDateTime = false) {
+            document.getElementById('input_dest').value = '';
+            document.getElementById('input_transport').value = '';
+            document.getElementById('input_duration').value = '';
+            document.getElementById('input_cost').value = '';
+            document.getElementById('input_notes').value = '';
+        }
+
+        function saveToStorage() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(itineraryData));
+            showSaveStatus();
+        }
+
+        function loadFromStorage() {
+            const savedData = localStorage.getItem(STORAGE_KEY);
+            if (savedData) {
+                try {
+                    itineraryData = fixMissingIds(JSON.parse(savedData));
+                    refreshTable();
+                } catch(e) {
+                    console.error("讀取快取失敗", e);
+                }
+            }
+        }
+
+        // ★ 修改：備份匯出時，連同上傳的圖片一起打包進 JSON，這樣下次讀取舊檔圖片才不會不見
+        function exportData() {
+            if (itineraryData.length === 0 && uploadedImages.length === 0) { alert("沒有資料可匯出"); return; }
+            const packageData = {
+                itinerary: itineraryData,
+                images: uploadedImages
+            };
+            const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `行程與憑證備份_${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        // ★ 修改：讀取備份時，自動判斷是舊版純行程 JSON 還是新版含圖片的 JSON
+        function importData(input) {
+            const file = input.files[0]; if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const parsed = JSON.parse(e.target.result);
+                    if(confirm("確定載入此檔案嗎？目前資料將被覆蓋。")) {
+                        if (Array.isArray(parsed)) {
+                            // 舊版純行程資料
+                            itineraryData = fixMissingIds(parsed); 
+                            uploadedImages = [];
+                        } else if (parsed.itinerary) {
+                            // 新版複合包資料
+                            itineraryData = fixMissingIds(parsed.itinerary);
+                            uploadedImages = parsed.images || [];
+                        } else {
+                            throw new Error();
+                        }
+                        refreshTable(); 
+                        renderImages();
+                        saveToStorage();
+                        saveImagesToStorage();
+                    }
+                } catch(err) { alert("檔案格式錯誤，無法正確解析"); }
+                input.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function fixMissingIds(data) {
+            return data.map((item, index) => item.id ? item : { ...item, id: Date.now().toString() + index });
+        }
+
+        function clearAllData() {
+            if(confirm("確定要清空所有行程與圖片嗎？")) { 
+                itineraryData = []; 
+                uploadedImages = [];
+                refreshTable(); 
+                renderImages();
+                saveToStorage(); 
+                saveImagesToStorage();
+            }
+        }
+
+        // 提示小動畫
+        function showSaveStatus() {
+            const status = document.getElementById('save-status');
+            status.style.opacity = '1'; status.classList.remove('save-toast');
+            void status.offsetWidth; status.classList.add('save-toast');
+        }
+
+        // 呼叫瀏覽器強大的原生列印引擎匯出 PDF
+        function generatePDF() {
+            window.print();
+        }
+    </script>
+</body>
+</html>
