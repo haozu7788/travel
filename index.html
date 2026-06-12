@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>旅遊行程規劃助手 v13.2 (動態幣別支援版)</title>
+    <title>旅遊行程規劃助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         .editing-row { background-color: #fff7ed !important; border-left: 4px solid #f97316; }
@@ -17,9 +17,6 @@
             letter-spacing: 0.05em;
         }
         
-        /* ==========================================
-           列印專用 CSS：隱藏不必要的元素，並確保 PDF 完美排版
-           ========================================== */
         @media print {
             * {
                 -webkit-print-color-adjust: exact !important;
@@ -35,12 +32,10 @@
                 min-width: 100% !important;
                 width: 100% !important;
             }
-            /* 避免表格的行、日期標題從中間被腰斬 */
             tr, .day-header { 
                 page-break-inside: avoid !important; 
                 break-inside: avoid !important; 
             }
-            /* ★ 關鍵：避免最下方的圖片從中間被跨頁切斷 */
             .print-img-wrapper {
                 page-break-inside: avoid !important;
                 break-inside: avoid !important;
@@ -57,7 +52,7 @@
         <div class="bg-slate-900 p-6 text-white flex flex-col md:flex-row justify-between items-center gap-4">
             <div>
                 <h1 class="text-2xl md:text-3xl font-bold tracking-wider">📅 智能行程分組系統</h1>
-                <p class="text-slate-400 text-sm mt-1">v13.2 - 支援動態幣別新增與自適應匯率</p>
+                <p class="text-slate-400 text-sm mt-1">v13.4 - 支援全版本 JSON 向下相容讀取</p>
             </div>
             
             <div class="flex flex-wrap items-center gap-3">
@@ -79,8 +74,7 @@
         <div class="bg-slate-800 p-3 px-6 border-t border-slate-700 text-white text-sm flex flex-wrap gap-4 items-center no-print" id="currency-bar">
             <span class="font-bold text-slate-300">💱 匯率設定：</span>
             
-            <div id="dynamic-rates-container" class="flex flex-wrap gap-2 items-center">
-                </div>
+            <div id="dynamic-rates-container" class="flex flex-wrap gap-2 items-center"></div>
             
             <button onclick="addCurrency()" class="bg-slate-600 hover:bg-slate-500 text-xs px-2 py-1.5 rounded transition shadow font-bold flex items-center gap-1">
                 ＋ 新增幣別
@@ -88,8 +82,8 @@
             
             <div class="border-l border-slate-600 pl-4 flex flex-wrap items-center gap-2">
                 <span class="font-bold text-slate-300">主幣別：</span>
-                <input type="text" id="base_currency_code" placeholder="代碼" class="w-14 p-1 text-black rounded text-center outline-none font-bold uppercase" onchange="saveRatesToLocalStorage()">
-                <input type="text" id="base_currency_symbol" placeholder="符號" class="w-10 p-1 text-black rounded text-center outline-none font-bold" onchange="saveRatesToLocalStorage()">
+                <input type="text" id="base_currency_code" placeholder="代碼" class="w-14 p-1 text-black rounded text-center outline-none font-bold uppercase" onchange="updateBaseCurrencyFromUI()">
+                <input type="text" id="base_currency_symbol" placeholder="符號" class="w-10 p-1 text-black rounded text-center outline-none font-bold" onchange="updateBaseCurrencyFromUI()">
             </div>
         </div>
 
@@ -137,8 +131,7 @@
                         <div class="flex gap-1">
                             <input type="number" id="input_cost" placeholder="0" class="w-2/3 p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px]">
                             <select id="input_currency" class="w-1/3 p-1 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px] bg-white font-bold text-slate-700 text-sm">
-                                <!-- 由 JS 動態生成 -->
-                            </select>
+                                </select>
                         </div>
                     </div>
                     
@@ -215,7 +208,7 @@
                         <button onclick="addPackingItem()" class="bg-indigo-600 text-white px-5 rounded font-bold hover:bg-indigo-700 transition shadow">新增</button>
                     </div>
                     <ul id="packing-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-6 text-sm font-bold text-slate-700">
-                        </ul>
+                    </ul>
                 </div>
 
                 <div id="attachments-area" class="border-t-2 border-dashed border-slate-300 pt-6">
@@ -230,8 +223,7 @@
                         </button>
                     </div>
 
-                    <div id="image-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        </div>
+                    <div id="image-grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
                 </div>
             </div>
 
@@ -257,21 +249,20 @@
         let uploadedImages = []; 
         let packingList = [];
 
-        // 預設為日幣為主幣別，並設定相對匯率 (以 1 當地幣 = 多少日幣 為基準計算)
         let currencyData = {
             baseCode: 'JPY',
             baseSymbol: '¥',
             rates: {
-                'TWD': 4.8,  // 1 TWD = 約 4.8 JPY
-                'THB': 4.3,  // 1 THB = 約 4.3 JPY
-                'NZD': 90.0  // 1 NZD = 約 90.0 JPY
+                'TWD': 4.8,  
+                'THB': 4.3,  
+                'NZD': 90.0  
             }
         };
 
         window.onload = function() {
             initDateAndTime();
             initTransports();
-            loadRatesFromLocalStorage(); // 初始化匯率系統
+            loadRatesFromLocalStorage(); 
             loadFromStorage();
             loadImagesFromStorage();
             loadPackingFromStorage();
@@ -306,9 +297,13 @@
             renderCurrencyUI();
         }
 
-        function saveRatesToLocalStorage() {
+        function updateBaseCurrencyFromUI() {
             currencyData.baseCode = document.getElementById('base_currency_code').value.toUpperCase() || 'JPY';
             currencyData.baseSymbol = document.getElementById('base_currency_symbol').value || '¥';
+            saveRatesToLocalStorage();
+        }
+
+        function saveRatesToLocalStorage() {
             localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
             populateCurrencyDropdown();
             refreshTable();
@@ -370,7 +365,6 @@
                 select.add(new Option(code, code));
             }
             
-            // 保留原本選擇的值，或是預設為主幣別
             if (currentVal && (currentVal === currencyData.baseCode || currencyData.rates[currentVal])) {
                 select.value = currentVal;
             } else {
@@ -715,7 +709,6 @@
             document.getElementById('input_category').value = item.category || '其他';
             document.getElementById('input_notes').value = item.notes;
 
-            // 確保要編輯的幣別存在於選單中
             const currencyVal = item.currency || currencyData.baseCode;
             if (!currencyData.rates[currencyVal] && currencyVal !== currencyData.baseCode) {
                 currencyData.rates[currencyVal] = 1.0;
@@ -819,7 +812,6 @@
         }
 
         function exportData() {
-            if (itineraryData.length === 0 && uploadedImages.length === 0 && packingList.length === 0) { alert("沒有資料可匯出"); return; }
             const packageData = {
                 itinerary: itineraryData,
                 images: uploadedImages,
@@ -829,10 +821,13 @@
             const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
-            a.href = url; a.download = `行程與憑證備份_${new Date().toISOString().split('T')[0]}.json`;
+            a.href = url; a.download = `行程備份_${new Date().toISOString().split('T')[0]}.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
         }
 
+        // ==========================
+        // ★ 終極相容讀取引擎 ★
+        // ==========================
         function importData(input) {
             const file = input.files[0]; if (!file) return;
             const reader = new FileReader();
@@ -840,38 +835,72 @@
                 try {
                     const parsed = JSON.parse(e.target.result);
                     if(confirm("確定載入此檔案嗎？目前資料將被覆蓋。")) {
+                        
+                        // 1. 處理最舊版的純陣列格式 (v1~v12)
                         if (Array.isArray(parsed)) {
-                            // 舊版純行程資料
-                            itineraryData = fixMissingIds(parsed); 
+                            itineraryData = fixMissingIds(parsed);
                             uploadedImages = [];
-                        } else if (parsed.itinerary) {
-                            itineraryData = fixMissingIds(parsed.itinerary);
-                            uploadedImages = parsed.images || [];
-                            packingList = parsed.packing || [];
+                            packingList = [];
+                        } 
+                        // 2. 處理新版物件格式 (v13+)
+                        else if (parsed && typeof parsed === 'object') {
+                            itineraryData = fixMissingIds(parsed.itinerary || []);
+                            uploadedImages = Array.isArray(parsed.images) ? parsed.images : [];
+                            packingList = Array.isArray(parsed.packing) ? parsed.packing : [];
+                            
+                            // 匯率結構防呆相容處理
                             if (parsed.rates) {
-                                if(parsed.rates.baseCode) {
-                                    currencyData = parsed.rates;
+                                if (parsed.rates.baseCode) {
+                                    // v13.2+ 正常格式
+                                    currencyData.baseCode = parsed.rates.baseCode;
+                                    currencyData.baseSymbol = parsed.rates.baseSymbol || currencyData.baseSymbol;
+                                    currencyData.rates = parsed.rates.rates || currencyData.rates;
+                                } else if (parsed.rates.base) {
+                                    // v13.1 過渡期格式
+                                    currencyData.baseCode = 'TWD';
+                                    currencyData.baseSymbol = parsed.rates.base;
+                                    currencyData.rates = {
+                                        'JPY': parsed.rates.JPY || 0.21,
+                                        'THB': parsed.rates.THB || 0.90,
+                                        'NZD': parsed.rates.NZD || 19.5
+                                    };
                                 }
-                                saveRatesToLocalStorage();
-                                renderCurrencyUI(); // 更新介面
                             }
                         } else {
-                            throw new Error();
+                            throw new Error("無法識別的格式");
                         }
-                        refreshTable(); 
-                        renderImages();
-                        renderPackingList();
+
+                        // ★ 關鍵修復：舊行程若沒有標示幣別，一律預設為 TWD，並動態補齊缺少的幣別選單
+                        itineraryData.forEach(item => {
+                            if (!item.currency) item.currency = 'TWD';
+                            if (item.currency !== currencyData.baseCode && !currencyData.rates[item.currency]) {
+                                currencyData.rates[item.currency] = 1.0; 
+                            }
+                        });
+                        
+                        // 寫入快取
+                        localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
                         saveToStorage();
                         saveImagesToStorage();
                         savePackingToStorage();
+                        
+                        // 重新渲染畫面
+                        refreshTable(); 
+                        renderImages();
+                        renderPackingList();
+                        renderCurrencyUI(); 
                     }
-                } catch(err) { alert("檔案格式錯誤，無法正確解析"); }
+                } catch(err) { 
+                    console.error("讀取失敗：", err);
+                    alert("檔案格式異常或不相容，無法正確載入！"); 
+                }
                 input.value = '';
             };
             reader.readAsText(file);
         }
 
         function fixMissingIds(data) {
+            if (!Array.isArray(data)) return [];
             return data.map((item, index) => item.id ? item : { ...item, id: Date.now().toString() + index });
         }
 
