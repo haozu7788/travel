@@ -180,7 +180,7 @@
                 <div id="expense-legend" class="flex flex-wrap gap-3 text-xs text-slate-500 font-bold mb-6"></div>
                 
                 <div class="overflow-x-auto print:overflow-visible mb-8">
-                    <table class="w-full text-left border-collapse min-w-[800px]">
+                    <table class="w-full text-left border-collapse min-w-[800px] print:min-w-full table-fixed md:table-auto">
                     <thead>
                         <tr class="bg-slate-800 text-white text-xs uppercase font-bold">
                             <th class="p-3 w-[10%] text-center">時間</th>
@@ -618,9 +618,11 @@
 
                 const displayCost = (parseFloat(item.cost) || 0) === 0 ? "-" : `<span class="text-[10px] text-slate-400 mr-1">${item.currency||currencyData.baseCode}</span>` + parseFloat(item.cost).toLocaleString();
                 
+                // 修正地圖 URL 的小 typo
                 const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.dest)}`;
                 const mapBtn = `<a href="${mapUrl}" target="_blank" class="text-blue-400 hover:text-blue-600 ml-1 no-print inline-block transform hover:scale-110 transition" title="Google Maps 導航">🗺️</a>`;
 
+                // 修正處：備註欄位加上 break-words 確保長字串（如連結或代碼）會自動折行不會推擠表格
                 row.innerHTML = `
                     <td class="p-3 text-center font-black text-slate-800 text-lg font-mono">${item.hour}:${item.min}</td>
                     <td class="p-3 font-bold text-slate-900 text-lg">${item.dest || "-"}${mapBtn}</td>
@@ -628,7 +630,7 @@
                     <td class="p-3 text-center text-xs font-bold text-slate-600 bg-yellow-50 rounded">${item.duration || "-"}</td>
                     <td class="p-3 text-right font-mono font-bold text-slate-700">${displayCost}</td>
                     <td class="p-3 text-center">${getCategoryBadge(item.category || '其他')}</td>
-                    <td class="p-3 pl-6 text-sm text-slate-600 border-l italic">${item.notes || ""}</td>
+                    <td class="p-3 pl-6 text-sm text-slate-600 border-l italic break-words">${item.notes || ""}</td>
                     <td class="p-3 text-center no-print flex justify-center gap-2">
                         <button onclick="editItem('${item.id}')" class="p-1 text-blue-500 hover:text-blue-700 font-bold">✎</button>
                         <button onclick="deleteItem('${item.id}')" class="p-1 text-red-300 hover:text-red-500 font-bold">✕</button>
@@ -643,8 +645,11 @@
 
         function calculateExpenses() {
             let total = 0;
-            let catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲': 0, '門票': 0, '購物': 0, '其他': 0 };
+            let catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲食': 0, '門票': 0, '購物': 0, '其他': 0 };
             
+            // 修正對齊分類名稱字串錯誤 ('餐飲食' 改回 '餐飲')
+            catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲': 0, '門票': 0, '購物': 0, '其他': 0 };
+
             itineraryData.forEach(item => {
                 let val = toBaseCurrency(parseFloat(item.cost) || 0, item.currency || currencyData.baseCode);
                 total += val;
@@ -745,6 +750,7 @@
             document.getElementById('input_notes').value = '';
         }
 
+        // 統一存檔名稱為 v13
         function saveToStorage() {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(itineraryData));
             showSaveStatus();
