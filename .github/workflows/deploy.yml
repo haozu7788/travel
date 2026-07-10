@@ -25,13 +25,10 @@ jobs:
 
       - name: Build and replace tokens 🔧
         run: |
-          # 建立 artifact 目錄
           mkdir -p artifact
-          # 複製所有檔案到 artifact 目錄
-          cp -r ./* artifact/
-          # 尋找 artifact/index.html 中的佔位符，並用 GitHub Secrets 的值替換它們
-          sed -i "s|__GOOGLE_API_KEY__|${{ secrets.VITE_GOOGLE_API_KEY }}|g" "artifact/index.html"
-          sed -i "s|__GOOGLE_CLIENT_ID__|${{ secrets.VITE_GOOGLE_CLIENT_ID }}|g" "artifact/index.html"
+          cp index.html artifact/index.html
+          sed -i "s|__GOOGLE_API_KEY__|${{ secrets.VITE_GOOGLE_API_KEY }}|g" artifact/index.html
+          sed -i "s|__GOOGLE_CLIENT_ID__|${{ secrets.VITE_GOOGLE_CLIENT_ID }}|g" artifact/index.html
 
       - name: Setup Pages ⚙️
         uses: actions/configure-pages@v4
