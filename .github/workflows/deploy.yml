@@ -26,9 +26,8 @@ jobs:
       - name: Build and replace tokens 🔧
         run: |
           mkdir -p artifact
+          echo "const GOOGLE_API_CONFIG = { API_KEY: '${{ secrets.VITE_GOOGLE_API_KEY }}', CLIENT_ID: '${{ secrets.VITE_GOOGLE_CLIENT_ID }}' };" > artifact/config.js
           cp index.html artifact/index.html
-          sed -i "s|__GOOGLE_API_KEY__|${{ secrets.VITE_GOOGLE_API_KEY }}|g" artifact/index.html
-          sed -i "s|__GOOGLE_CLIENT_ID__|${{ secrets.VITE_GOOGLE_CLIENT_ID }}|g" artifact/index.html
 
       - name: Setup Pages ⚙️
         uses: actions/configure-pages@v4

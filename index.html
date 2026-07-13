@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>旅遊行程規劃助手</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="config.js" defer></script>
+    <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         .editing-row { background-color: #fff7ed !important; border-left: 4px solid #f97316; }
@@ -60,9 +62,9 @@
                 <span id="save-status" class="text-green-400 text-xs font-bold opacity-0 transition-opacity mr-2">✅ 已儲存</span>
 
                 <div id="gdrive-auth-buttons" class="flex items-center gap-3">
-                    <button onclick="handleAuthClick()" class="text-sm bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-500 transition shadow flex items-center gap-1">
+                    <button id="gdrive-login-btn" onclick="handleAuthClick()" class="text-sm bg-gray-400 text-white px-4 py-2 rounded transition shadow flex items-center gap-1 cursor-not-allowed" disabled>
                         <svg class="w-4 h-4" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.8c3.86 0 6.97 1.54 9.28 3.68l6.9-6.9C35.93 2.36 30.38 0 24 0 14.86 0 7.29 5.39 4.13 12.94l7.89 6.12C13.73 13.33 18.4 9.8 24 9.8z"></path><path fill="#4285F4" d="M46.14 24.5c0-1.66-.15-3.28-.42-4.85H24v9.17h12.43c-.54 2.95-2.1 5.48-4.43 7.2l7.48 5.76C43.07 37.6 46.14 31.6 46.14 24.5z"></path><path fill="#FBBC05" d="M12.02 19.06c-.38 1.18-.6 2.43-.6 3.74s.22 2.56.6 3.74l-7.89 6.12C1.54 35.6 0 30.03 0 24s1.54-11.6 4.13-16.66l7.89 6.12z"></path><path fill="#34A953" d="M24 48c6.38 0 11.93-2.12 15.91-5.76l-7.48-5.76c-2.1 1.42-4.78 2.26-7.95 2.26-5.6 0-10.27-3.53-11.98-8.24l-7.89 6.12C7.29 42.61 14.86 48 24 48z"></path><path fill="none" d="M0 0h48v48H0z"></path></svg>
-                        <span>登入 Google</span>
+                        <span id="gdrive-login-text">載入中...</span>
                     </button>
                 </div>
                 <div id="gdrive-action-buttons" class="hidden flex items-center gap-3">
@@ -250,14 +252,21 @@
         </div>
     </div>
 
-    <script>
-        // This config object will be populated by GitHub Actions during deployment.
-        // For local development, you can manually create a config.js file with this content.
-        const GOOGLE_API_CONFIG = {
-            API_KEY: '__GOOGLE_API_KEY__',
-            CLIENT_ID: '__GOOGLE_CLIENT_ID__'
-        };
-    </script>
+    <!-- Google Drive File Picker Modal -->
+    <div id="gdrive-file-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4 no-print">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md">
+            <div class="p-5 border-b">
+                <h3 id="gdrive-modal-title" class="text-lg font-bold text-slate-800">選擇檔案</h3>
+            </div>
+            <div id="gdrive-file-list" class="p-5 max-h-[60vh] overflow-y-auto">
+                <!-- File list will be injected here -->
+            </div>
+            <div class="p-4 bg-slate-50 rounded-b-lg flex justify-end gap-3">
+                <button id="gdrive-modal-new-btn" onclick="handleSaveNewFile()" class="hidden bg-sky-600 text-white px-4 py-2 rounded hover:bg-sky-500 transition shadow">建立新備份</button>
+                <button onclick="closeGdriveModal()" class="bg-slate-200 text-slate-700 px-4 py-2 rounded hover:bg-slate-300 transition">取消</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         const STORAGE_KEY = 'my_travel_plan_v12';
@@ -281,14 +290,14 @@
             }
         };
 
-        window.onload = function() {
+        window.onload = async function() {
             initDateAndTime();
             initTransports();
             loadRatesFromLocalStorage(); 
             loadFromStorage();
-            initGapiClient();
             loadImagesFromStorage();
             loadPackingFromStorage();
+            await initGapiClient(); // 等待 Google API 初始化完成
         };
 
         function initDateAndTime() {
@@ -640,9 +649,10 @@
                 if(document.getElementById('edit_id').value === item.id) row.classList.add('editing-row');
 
                 const displayCost = (parseFloat(item.cost) || 0) === 0 ? "-" : `<span class="text-[10px] text-slate-400 mr-1">${item.currency||currencyData.baseCode}</span>` + parseFloat(item.cost).toLocaleString();
-                
-                // 修正地圖 URL 的小 typo
-                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.dest)}`;
+
+                // 修正地圖 URL 編碼，將 '&' 替換成 'and' 以避免 Google Maps 誤判為多個搜尋詞
+                const safeDestForMap = item.dest.replace(/&/g, 'and');
+                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeDestForMap)}`;
                 const mapBtn = `<a href="${mapUrl}" target="_blank" class="text-blue-400 hover:text-blue-600 ml-1 no-print inline-block transform hover:scale-110 transition" title="Google Maps 導航">🗺️</a>`;
 
                 // 修正處：備註欄位加上 break-words 確保長字串（如連結或代碼）會自動折行不會推擠表格
@@ -668,10 +678,7 @@
 
         function calculateExpenses() {
             let total = 0;
-            let catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲食': 0, '門票': 0, '購物': 0, '其他': 0 };
-            
-            // 修正對齊分類名稱字串錯誤 ('餐飲食' 改回 '餐飲')
-            catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲': 0, '門票': 0, '購物': 0, '其他': 0 };
+            let catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲': 0, '門票': 0, '購物': 0, '其他': 0 };
 
             itineraryData.forEach(item => {
                 let val = toBaseCurrency(parseFloat(item.cost) || 0, item.currency || currencyData.baseCode);
@@ -863,62 +870,7 @@
             reader.onload = function(e) {
                 try {
                     const parsed = JSON.parse(e.target.result);
-                    if(confirm("確定載入此檔案嗎？目前資料將被覆蓋。")) {
-                        
-                        // 1. 處理最舊版的純陣列格式 (v1~v12)
-                        if (Array.isArray(parsed)) {
-                            itineraryData = fixMissingIds(parsed);
-                            uploadedImages = [];
-                            packingList = [];
-                        } 
-                        // 2. 處理新版物件格式 (v13+)
-                        else if (parsed && typeof parsed === 'object') {
-                            itineraryData = fixMissingIds(parsed.itinerary || []);
-                            uploadedImages = Array.isArray(parsed.images) ? parsed.images : [];
-                            packingList = Array.isArray(parsed.packing) ? parsed.packing : [];
-                            
-                            // 匯率結構防呆相容處理
-                            if (parsed.rates) {
-                                if (parsed.rates.baseCode) {
-                                    // v13.2+ 正常格式
-                                    currencyData.baseCode = parsed.rates.baseCode;
-                                    currencyData.baseSymbol = parsed.rates.baseSymbol || currencyData.baseSymbol;
-                                    currencyData.rates = parsed.rates.rates || currencyData.rates;
-                                } else if (parsed.rates.base) {
-                                    // v13.1 過渡期格式
-                                    currencyData.baseCode = 'TWD';
-                                    currencyData.baseSymbol = parsed.rates.base;
-                                    currencyData.rates = {
-                                        'JPY': parsed.rates.JPY || 0.21,
-                                        'THB': parsed.rates.THB || 0.90,
-                                        'NZD': parsed.rates.NZD || 19.5
-                                    };
-                                }
-                            }
-                        } else {
-                            throw new Error("無法識別的格式");
-                        }
-
-                        // ★ 關鍵修復：舊行程若沒有標示幣別，一律預設為 TWD，並動態補齊缺少的幣別選單
-                        itineraryData.forEach(item => {
-                            if (!item.currency) item.currency = 'TWD';
-                            if (item.currency !== currencyData.baseCode && !currencyData.rates[item.currency]) {
-                                currencyData.rates[item.currency] = 1.0; 
-                            }
-                        });
-                        
-                        // 寫入快取
-                        localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
-                        saveToStorage();
-                        saveImagesToStorage();
-                        savePackingToStorage();
-                        
-                        // 重新渲染畫面
-                        refreshTable(); 
-                        renderImages();
-                        renderPackingList();
-                        renderCurrencyUI(); 
-                    }
+                    processImportedData(parsed);
                 } catch(err) { 
                     console.error("讀取失敗：", err);
                     alert("檔案格式異常或不相容，無法正確載入！"); 
@@ -926,6 +878,67 @@
                 input.value = '';
             };
             reader.readAsText(file);
+        }
+
+        function processImportedData(parsedData) {
+            if(!confirm("確定載入此檔案嗎？目前資料將被覆蓋。")) return;
+
+            // 1. 處理最舊版的純陣列格式 (v1~v12)
+            if (Array.isArray(parsedData)) {
+                itineraryData = fixMissingIds(parsedData);
+                uploadedImages = [];
+                packingList = [];
+                // ★ 關鍵修復：讀取舊版資料時，重置匯率設定為預設值 (以 TWD 為主)
+                currencyData = {
+                    baseCode: 'TWD',
+                    baseSymbol: 'NT$',
+                    rates: {
+                        'JPY': 0.21,
+                        'THB': 0.90,
+                        'NZD': 19.5
+                    }
+                };
+            } 
+            // 2. 處理新版物件格式 (v13+)
+            else if (parsedData && typeof parsedData === 'object') {
+                itineraryData = fixMissingIds(parsedData.itinerary || []);
+                uploadedImages = Array.isArray(parsedData.images) ? parsedData.images : [];
+                packingList = Array.isArray(parsedData.packing) ? parsedData.packing : [];
+                
+                // 匯率結構防呆相容處理
+                if (parsedData.rates) {
+                    if (parsedData.rates.baseCode) {
+                        // v13.2+ 正常格式
+                        currencyData.baseCode = parsedData.rates.baseCode;
+                        currencyData.baseSymbol = parsedData.rates.baseSymbol || currencyData.baseSymbol;
+                        currencyData.rates = parsedData.rates.rates || currencyData.rates;
+                    } else if (parsedData.rates.base) {
+                        // v13.1 過渡期格式
+                        currencyData.baseCode = 'TWD';
+                        currencyData.baseSymbol = parsedData.rates.base;
+                        currencyData.rates = {
+                            'JPY': parsedData.rates.JPY || 0.21,
+                            'THB': parsedData.rates.THB || 0.90,
+                            'NZD': parsedData.rates.NZD || 19.5
+                        };
+                    }
+                }
+            } else {
+                throw new Error("無法識別的格式");
+            }
+
+            // ★ 關鍵修復：舊行程若沒有標示幣別，一律預設為 TWD，並動態補齊缺少的幣別選單
+            itineraryData.forEach(item => {
+                if (!item.currency) item.currency = 'TWD';
+                if (item.currency !== currencyData.baseCode && !currencyData.rates[item.currency]) {
+                    currencyData.rates[item.currency] = 1.0; 
+                }
+            });
+            
+            // 寫入快取並重新渲染畫面
+            localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
+            saveToStorage(); saveImagesToStorage(); savePackingToStorage();
+            refreshTable(); renderImages(); renderPackingList(); renderCurrencyUI(); 
         }
 
         function fixMissingIds(data) {
@@ -998,31 +1011,60 @@
         // 參考說明：https://developers.google.com/drive/api/quickstart/js
         const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
         const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-        const BACKUP_FILENAME = '旅遊行程規劃助手_備份.json';
         
         let tokenClient;
         let gapiInited = false;
         let gisInited = false;
 
-        function initGapiClient() {
-            gapi.load('client', async () => {
-                await gapi.client.init({
-                    apiKey: GOOGLE_API_CONFIG.API_KEY,
-                    discoveryDocs: DISCOVERY_DOCS,
+        async function initGapiClient() {
+            // 使用 Promise 來確保兩個 API 都已載入
+            const gapiPromise = new Promise((resolve, reject) => {
+                gapi.load('client', async () => {
+                    try {
+                        await gapi.client.init({
+                            apiKey: GOOGLE_API_CONFIG.API_KEY,
+                            discoveryDocs: DISCOVERY_DOCS,
+                        });
+                        gapiInited = true;
+                        resolve();
+                    } catch (error) {
+                        reject(error);
+                    }
                 });
-                gapiInited = true;
             });
 
-            tokenClient = google.accounts.oauth2.initTokenClient({
-                client_id: GOOGLE_API_CONFIG.CLIENT_ID,
-                scope: SCOPES,
-                callback: (tokenResponse) => {
-                    if (tokenResponse && tokenResponse.access_token) {
-                        updateGdriveUI(true);
-                    }
-                },
+            const gisPromise = new Promise((resolve) => {
+                tokenClient = google.accounts.oauth2.initTokenClient({
+                    client_id: GOOGLE_API_CONFIG.CLIENT_ID,
+                    scope: SCOPES,
+                    callback: (tokenResponse) => {
+                        if (tokenResponse && tokenResponse.access_token) {
+                            updateGdriveUI(true);
+                        }
+                    },
+                });
+                gisInited = true;
+                resolve();
             });
-            gisInited = true;
+
+            try {
+                // 等待兩個 Promise 都完成後，才啟用登入按鈕
+                await Promise.all([gapiPromise, gisPromise]);
+                const loginBtn = document.getElementById('gdrive-login-btn');
+                loginBtn.disabled = false;
+                loginBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
+                loginBtn.classList.add('bg-gray-600', 'hover:bg-gray-500');
+                document.getElementById('gdrive-login-text').textContent = '登入 Google';
+            } catch (error) {
+                // 如果初始化過程中發生任何錯誤
+                console.error("Google API 初始化失敗:", error);
+                const loginBtn = document.getElementById('gdrive-login-btn');
+                loginBtn.disabled = true;
+                loginBtn.classList.remove('bg-gray-400');
+                loginBtn.classList.add('bg-red-500', 'cursor-not-allowed');
+                document.getElementById('gdrive-login-text').textContent = '載入失敗';
+                alert("Google API 初始化失敗！請按 F12 打開開發者工具，查看 Console 中的錯誤訊息。");
+            }
         }
 
         function handleAuthClick() {
@@ -1030,7 +1072,7 @@
                 alert("Google API 尚未初始化，請稍後再試。");
                 return;
             }
-            if (!GOOGLE_API_CONFIG.API_KEY || GOOGLE_API_CONFIG.API_KEY.startsWith('__')) {
+            if (typeof GOOGLE_API_CONFIG === 'undefined' || !GOOGLE_API_CONFIG.API_KEY || GOOGLE_API_CONFIG.API_KEY.includes('YOUR_')) {
                 alert("錯誤：尚未設定 Google API Key，請在程式碼中填入。");
                 return;
             }
@@ -1052,57 +1094,133 @@
             document.getElementById('gdrive-action-buttons').style.display = isLoggedIn ? 'flex' : 'none';
         }
 
-        async function findOrCreateFile() {
+        async function listBackupFiles() {
             const response = await gapi.client.drive.files.list({
-                q: `name='${BACKUP_FILENAME}' and trashed=false`,
-                fields: 'files(id, name)',
+                q: "appProperties has { key='travelPlannerBackup' and value='true' } and trashed=false",
+                fields: 'files(id, name, modifiedTime)',
+                orderBy: 'modifiedTime desc',
                 spaces: 'drive'
             });
-            if (response.result.files.length > 0) {
-                return response.result.files[0].id;
-            } else {
-                const createResponse = await gapi.client.drive.files.create({
-                    resource: { name: BACKUP_FILENAME },
-                    fields: 'id'
-                });
-                return createResponse.result.id;
-            }
+            return response.result.files || [];
+        }
+
+        async function createNewBackupFile(fileName) {
+            const createResponse = await gapi.client.drive.files.create({
+                resource: { 
+                    name: fileName,
+                    appProperties: {
+                        travelPlannerBackup: 'true'
+                    }
+                },
+                fields: 'id'
+            });
+            return createResponse.result.id;
         }
 
         async function saveToDrive() {
-            if (!confirm("確定要將目前的行程備份到 Google Drive 嗎？這將會覆蓋雲端上的舊備份。")) return;
-            
             try {
-                const fileId = await findOrCreateFile();
-                const packageData = { itinerary: itineraryData, images: uploadedImages, packing: packingList, rates: currencyData };
-                const blob = new Blob([JSON.stringify(packageData)], { type: 'application/json' });
-
-                const response = await gapi.client.request({
-                    path: `/upload/drive/v3/files/${fileId}`,
-                    method: 'PATCH',
-                    params: { uploadType: 'media' },
-                    body: blob
+                const files = await listBackupFiles();
+                // 無論如何都顯示彈出視窗，讓使用者選擇覆寫或建立新的
+                showGdriveModal('雲端備份', files, async (fileId) => {
+                    closeGdriveModal();
+                    if (fileId) { // 如果 fileId 存在，表示使用者選擇了覆寫
+                        await uploadFileContent(fileId);
+                    }
                 });
-                alert(`成功備份至 Google Drive！\n檔名：${BACKUP_FILENAME}`);
             } catch (err) {
                 console.error("雲端備份失敗:", err);
                 alert("雲端備份失敗，請檢查瀏覽器 Console 的錯誤訊息。");
             }
         }
 
-        async function loadFromDrive() {
-            if (!confirm("確定要從 Google Drive 讀取備份嗎？這將會覆蓋目前的行程資料。")) return;
+        async function handleSaveNewFile() {
+            closeGdriveModal();
             try {
-                const fileId = await findOrCreateFile(); // 假設檔案已存在
-                const response = await gapi.client.drive.files.get({
-                    fileId: fileId,
-                    alt: 'media'
-                });
-                importData({ files: [new File([JSON.stringify(response.result)], BACKUP_FILENAME, {type: "application/json"})] });
+                const defaultName = `行程備份_${new Date().toISOString().split('T')[0]}.json`;
+                const fileName = prompt("請輸入新備份的檔案名稱：", defaultName);
+                if (!fileName) return; // 使用者取消
+
+                const newFileId = await createNewBackupFile(fileName);
+                await uploadFileContent(newFileId);
+            } catch (err) {
+                console.error("建立新備份失敗:", err);
+                alert("建立新備份失敗，請檢查瀏覽器 Console 的錯誤訊息。");
+            }
+        }
+
+        async function uploadFileContent(fileId) {
+            const packageData = { itinerary: itineraryData, images: uploadedImages, packing: packingList, rates: currencyData };
+            const fileContent = JSON.stringify(packageData, null, 2);
+
+            await gapi.client.request({
+                path: `/upload/drive/v3/files/${fileId}`,
+                method: 'PATCH',
+                params: { uploadType: 'media' },
+                headers: { 'Content-Type': 'application/json' },
+                body: fileContent
+            });
+            alert(`成功備份至 Google Drive！`);
+        }
+
+        async function loadFromDrive() {
+            try {
+                 const files = await listBackupFiles();
+                 if (files.length === 0) {
+                     alert("Google Drive 上沒有找到任何備份檔案。");
+                     return;
+                 }
+ 
+                 showGdriveModal('選擇要讀取的備份', files, async (fileId) => {
+                     if (!fileId) return; // 如果使用者取消選擇
+                     closeGdriveModal();
+                     try {
+                         const response = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+                         if (response.result) {
+                             processImportedData(response.result);
+                         }
+                     } catch (err) {
+                         console.error("從雲端讀取特定檔案失敗:", err);
+                         alert("讀取檔案內容失敗！");
+                     }
+                 });
             } catch (err) {
                 console.error("從雲端讀取失敗:", err);
                 alert("從雲端讀取失敗，可能是雲端上尚未有備份檔案，或是授權已過期。");
             }
+        }
+
+        function showGdriveModal(title, files, callback) {
+            const modal = document.getElementById('gdrive-file-modal');
+            const fileList = document.getElementById('gdrive-file-list');
+            const newBtn = document.getElementById('gdrive-modal-new-btn');
+            document.getElementById('gdrive-modal-title').textContent = title;
+            fileList.innerHTML = '';
+
+            if (files.length === 0) {
+                fileList.innerHTML = '<p class="text-slate-500 text-center py-4">沒有找到任何備份檔案。</p>';
+            } else {
+                files.forEach(file => {
+                    const fileEl = document.createElement('div');
+                    fileEl.className = 'p-3 hover:bg-slate-100 rounded cursor-pointer border-b flex justify-between items-center';
+                    fileEl.innerHTML = `
+                        <div>
+                            <div class="font-bold text-slate-800">${file.name}</div>
+                            <div class="text-xs text-slate-500 mt-1">上次修改：${new Date(file.modifiedTime).toLocaleString()}</div>
+                        </div>
+                        <span class="text-xs font-bold text-orange-600">覆寫</span>
+                    `;
+                    fileEl.onclick = () => callback(file.id);
+                    fileList.appendChild(fileEl);
+                });
+            }
+
+            // 只有在 "儲存/覆寫" 時才顯示 "建立新備份" 按鈕
+            newBtn.style.display = title.includes('備份') ? 'block' : 'none';
+            modal.classList.remove('hidden');
+        }
+
+        function closeGdriveModal() {
+            document.getElementById('gdrive-file-modal').classList.add('hidden');
         }
     </script>
 </body>
