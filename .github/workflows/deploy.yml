@@ -28,6 +28,8 @@ jobs:
           mkdir -p artifact
           echo "const GOOGLE_API_CONFIG = { API_KEY: '${{ secrets.VITE_GOOGLE_API_KEY }}', CLIENT_ID: '${{ secrets.VITE_GOOGLE_CLIENT_ID }}' };" > artifact/config.js
           cp index.html artifact/index.html
+          cp -r css artifact/css
+          cp -r js artifact/js
 
       - name: Setup Pages ⚙️
         uses: actions/configure-pages@v4

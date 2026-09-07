@@ -8,44 +8,7 @@
     <script src="config.js" defer></script>
     <script src="https://apis.google.com/js/api.js"></script>
     <script src="https://accounts.google.com/gsi/client" async defer></script>
-    <style>
-        .editing-row { background-color: #fff7ed !important; border-left: 4px solid #f97316; }
-        @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
-        .save-toast { animation: fadeOut 2s forwards; animation-delay: 1s; }
-        .current-item { background-color: #fef08a !important; box-shadow: inset 4px 0 0 0 #eab308; }
-        .day-header {
-            background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 100%);
-            color: #334155;
-            font-weight: 800;
-            letter-spacing: 0.05em;
-        }
-        
-        @media print {
-            * {
-                -webkit-print-color-adjust: exact !important;
-                print-color-adjust: exact !important;
-            }
-            body { background-color: #ffffff !important; padding: 0 !important; margin: 0 !important; }
-            #input-area, .no-print, .bg-slate-900, button { display: none !important; }
-            #pdf-area {
-                border: none !important;
-                box-shadow: none !important;
-                padding: 0 !important;
-                margin: 0 !important;
-                min-width: 100% !important;
-                width: 100% !important;
-            }
-            tr, .day-header { 
-                page-break-inside: avoid !important; 
-                break-inside: avoid !important; 
-            }
-            .print-img-wrapper {
-                page-break-inside: avoid !important;
-                break-inside: avoid !important;
-            }
-            thead { display: table-header-group !important; }
-        }
-    </style>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body class="bg-slate-100 min-h-screen p-4 md:p-8 font-sans text-slate-800">
 
@@ -152,15 +115,12 @@
                     
                     <div class="lg:col-span-2">
                         <label class="block text-xs font-bold text-slate-400 mb-1 uppercase">分類</label>
-                        <select id="input_category" class="w-full p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px] bg-white font-bold text-slate-700">
-                            <option value="其他">其他</option>
-                            <option value="機票">機票</option>
-                            <option value="住宿">住宿</option>
-                            <option value="交通">交通</option>
-                            <option value="餐飲">餐飲</option>
-                            <option value="門票">門票</option>
-                            <option value="購物">購物</option>
-                        </select>
+                        <div class="flex items-center gap-1">
+                            <select id="input_category" class="min-w-0 flex-1 p-2 border border-slate-300 rounded focus:border-orange-500 outline-none h-[42px] bg-white font-bold text-slate-700"></select>
+                            <button type="button" onclick="addCustomCategory()" class="h-[42px] px-2 bg-slate-200 text-slate-700 rounded hover:bg-slate-300 transition font-bold" title="新增花費分類">＋</button>
+                            <button type="button" onclick="renameSelectedCategory()" class="h-[42px] px-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition font-bold" title="重新命名選定分類">✎</button>
+                            <button type="button" onclick="removeSelectedCategory()" class="h-[42px] px-2 bg-red-100 text-red-500 rounded hover:bg-red-200 transition font-bold" title="刪除選定分類">－</button>
+                        </div>
                     </div>
 
                     <div class="lg:col-span-6">
@@ -188,11 +148,17 @@
                     <div class="text-left sm:text-right">
                         <div class="text-xs text-slate-400 uppercase font-bold">Total Budget</div>
                         <div class="text-3xl font-black text-orange-600"><span id="total-currency" class="text-2xl mr-1">¥</span><span id="total-amount">0</span></div>
+                        <div class="mt-1 text-xs text-slate-500">
+                            行程 <span id="itinerary-expense-summary">¥ 0</span>・行前 <span id="pretrip-expense-summary">¥ 0</span>
+                        </div>
                     </div>
                 </div>
 
-                <div id="expense-chart" class="w-full h-3 bg-slate-100 rounded-full flex overflow-hidden mb-2 shadow-inner"></div>
-                <div id="expense-legend" class="flex flex-wrap gap-3 text-xs text-slate-500 font-bold mb-6"></div>
+                <div class="relative">
+                    <div id="expense-chart" class="w-full h-3 bg-slate-100 rounded-full flex overflow-hidden mb-2 shadow-inner" aria-label="預算分類比例圖"></div>
+                    <div id="expense-tooltip" class="hidden no-print pointer-events-none absolute bottom-full right-0 z-10 mb-2 rounded-lg bg-slate-800 px-3 py-2 text-xs text-white shadow-lg" aria-live="polite"></div>
+                </div>
+                <div id="expense-legend" class="flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-500 font-bold mb-3"></div>
                 
                 <div class="overflow-x-auto print:overflow-visible mb-8">
                     <table class="w-full text-left border-collapse min-w-[800px] print:min-w-full table-fixed md:table-auto">
@@ -224,6 +190,68 @@
                     </div>
                     <ul id="packing-list" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-y-3 gap-x-6 text-sm font-bold text-slate-700">
                     </ul>
+                </div>
+
+                <div id="pretrip-area" class="border-t-2 border-dashed border-slate-300 pt-6 mb-8">
+                    <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-slate-700">📝 行前事項與其他支出</h3>
+                            <p class="text-xs text-slate-400 mt-1">記錄簽證、保險、網卡、手續費等不屬於特定行程的項目</p>
+                        </div>
+                        <div class="font-black text-amber-700">小計：<span id="pretrip-subtotal">¥ 0</span></div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-3 rounded-xl bg-amber-50 border border-amber-100 p-4 mb-4 no-print">
+                        <input type="hidden" id="pretrip-edit-id">
+                        <div class="md:col-span-4">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">項目名稱</label>
+                            <input id="pretrip-title" type="text" placeholder="例如：簽證申請" class="w-full h-[42px] p-2 border border-slate-300 rounded outline-none focus:border-amber-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">分類</label>
+                            <div class="flex items-center gap-1">
+                                <select id="pretrip-category" class="min-w-0 flex-1 h-[42px] p-2 border border-slate-300 rounded bg-white outline-none focus:border-amber-500"></select>
+                                <button type="button" onclick="addPreTripCategory()" class="h-[42px] px-2 bg-amber-200 text-amber-800 rounded hover:bg-amber-300 transition font-bold" title="新增行前分類">＋</button>
+                                <button type="button" onclick="renamePreTripCategory()" class="h-[42px] px-2 bg-blue-100 text-blue-600 rounded hover:bg-blue-200 transition font-bold" title="重新命名選定分類">✎</button>
+                                <button type="button" onclick="removePreTripCategory()" class="h-[42px] px-2 bg-red-100 text-red-500 rounded hover:bg-red-200 transition font-bold" title="刪除選定分類">－</button>
+                            </div>
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">截止日期</label>
+                            <input id="pretrip-deadline" type="date" class="w-full h-[42px] p-2 border border-slate-300 rounded bg-white outline-none focus:border-amber-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">金額</label>
+                            <input id="pretrip-cost" type="number" min="0" step="0.01" placeholder="0" class="w-full h-[42px] p-2 border border-slate-300 rounded outline-none focus:border-amber-500">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">幣別</label>
+                            <select id="pretrip-currency" class="w-full h-[42px] p-2 border border-slate-300 rounded bg-white outline-none focus:border-amber-500"></select>
+                        </div>
+                        <div class="md:col-span-3">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">狀態</label>
+                            <select id="pretrip-status" class="w-full h-[42px] p-2 border border-slate-300 rounded bg-white outline-none focus:border-amber-500">
+                                <option value="pending">待處理</option><option value="progress">處理中</option><option value="completed">已完成</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-7">
+                            <label class="block text-xs font-bold text-slate-500 mb-1">備註</label>
+                            <input id="pretrip-notes" type="text" placeholder="申請方式、文件或其他提醒" class="w-full h-[42px] p-2 border border-slate-300 rounded outline-none focus:border-amber-500">
+                        </div>
+                        <div class="md:col-span-2 flex items-end gap-2">
+                            <button id="pretrip-submit-btn" type="button" onclick="savePreTripItem()" class="flex-1 h-[42px] bg-amber-600 text-white rounded font-bold hover:bg-amber-700 transition">新增</button>
+                            <button id="pretrip-cancel-btn" type="button" onclick="cancelPreTripEdit()" class="hidden h-[42px] px-3 bg-slate-200 text-slate-700 rounded font-bold hover:bg-slate-300 transition">取消</button>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto print:overflow-visible">
+                        <table class="w-full min-w-[760px] print:min-w-full text-sm border-collapse">
+                            <thead><tr class="bg-amber-100 text-amber-900 text-xs">
+                                <th class="p-3 text-left">項目</th><th class="p-3 text-left">分類</th><th class="p-3 text-left">截止日期</th><th class="p-3 text-left">狀態</th><th class="p-3 text-right">費用</th><th class="p-3 text-left">備註</th><th class="p-3 text-center no-print">功能</th>
+                            </tr></thead>
+                            <tbody id="pretrip-list" class="divide-y divide-amber-100"></tbody>
+                        </table>
+                    </div>
                 </div>
 
                 <div id="attachments-area" class="border-t-2 border-dashed border-slate-300 pt-6">
@@ -268,960 +296,6 @@
         </div>
     </div>
 
-    <script>
-        const STORAGE_KEY = 'my_travel_plan_v12';
-        const TRANSPORT_KEY = 'my_travel_plan_transports';
-        const IMAGES_KEY = 'my_travel_plan_images'; 
-        const PACKING_KEY = 'my_travel_plan_packing';
-        const RATES_KEY = 'my_travel_plan_rates_v13'; 
-
-        let itineraryData = []; 
-        let transportOptions = [];
-        let uploadedImages = []; 
-        let packingList = [];
-
-        let currencyData = {
-            baseCode: 'JPY',
-            baseSymbol: '¥',
-            rates: {
-                'TWD': 4.8,  
-                'THB': 4.3,  
-                'NZD': 90.0  
-            }
-        };
-
-        window.onload = async function() {
-            initDateAndTime();
-            initTransports();
-            loadRatesFromLocalStorage(); 
-            loadFromStorage();
-            loadImagesFromStorage();
-            loadPackingFromStorage();
-            await initGapiClient(); // 等待 Google API 初始化完成
-        };
-
-        function initDateAndTime() {
-            const today = new Date();
-            document.getElementById('input_date').value = today.toISOString().split('T')[0];
-            const hourSelect = document.getElementById('input_hour');
-            for (let i = 0; i < 24; i++) {
-                const val = String(i).padStart(2, '0');
-                hourSelect.add(new Option(val, val));
-            }
-            hourSelect.value = "09"; 
-            const minSelect = document.getElementById('input_min');
-            for (let i = 0; i < 60; i += 5) {
-                const val = String(i).padStart(2, '0');
-                minSelect.add(new Option(val, val));
-            }
-        }
-
-        // ==========================
-        // 動態匯率系統
-        // ==========================
-        function loadRatesFromLocalStorage() {
-            const saved = localStorage.getItem(RATES_KEY);
-            if (saved) {
-                try {
-                    currencyData = JSON.parse(saved);
-                } catch(e) {}
-            }
-            renderCurrencyUI();
-        }
-
-        function updateBaseCurrencyFromUI() {
-            currencyData.baseCode = document.getElementById('base_currency_code').value.toUpperCase() || 'JPY';
-            currencyData.baseSymbol = document.getElementById('base_currency_symbol').value || '¥';
-            saveRatesToLocalStorage();
-        }
-
-        function saveRatesToLocalStorage() {
-            localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
-            populateCurrencyDropdown();
-            refreshTable();
-        }
-
-        function renderCurrencyUI() {
-            const container = document.getElementById('dynamic-rates-container');
-            container.innerHTML = '';
-            
-            for (let code in currencyData.rates) {
-                const wrapper = document.createElement('label');
-                wrapper.className = "flex items-center gap-1 text-slate-300 bg-slate-700 px-2 py-1 rounded shadow-inner";
-                wrapper.innerHTML = `
-                    <span class="font-bold text-xs">${code}</span>
-                    <input type="number" value="${currencyData.rates[code]}" step="0.01" class="w-14 p-1 text-black rounded text-center outline-none font-bold text-sm" onchange="updateRate('${code}', this.value)">
-                    <button type="button" onclick="removeCurrency('${code}')" class="text-slate-400 hover:text-red-400 ml-1 font-bold transition">✕</button>
-                `;
-                container.appendChild(wrapper);
-            }
-            
-            document.getElementById('base_currency_code').value = currencyData.baseCode;
-            document.getElementById('base_currency_symbol').value = currencyData.baseSymbol;
-            populateCurrencyDropdown();
-        }
-
-        function updateRate(code, val) {
-            currencyData.rates[code] = parseFloat(val) || 1;
-            saveRatesToLocalStorage();
-        }
-
-        function addCurrency() {
-            const code = prompt("請輸入新的幣別代碼 (例如：USD, KRW)：");
-            if (code && code.trim() !== "") {
-                const upperCode = code.trim().toUpperCase();
-                if (!currencyData.rates[upperCode] && upperCode !== currencyData.baseCode) {
-                    currencyData.rates[upperCode] = 1.0;
-                    saveRatesToLocalStorage();
-                    renderCurrencyUI();
-                } else if (upperCode === currencyData.baseCode) {
-                    alert("該幣別已經是主幣別！");
-                }
-            }
-        }
-
-        function removeCurrency(code) {
-            if (confirm(`確定要移除「${code}」的匯率設定嗎？`)) {
-                delete currencyData.rates[code];
-                saveRatesToLocalStorage();
-                renderCurrencyUI();
-            }
-        }
-
-        function populateCurrencyDropdown() {
-            const select = document.getElementById('input_currency');
-            const currentVal = select.value;
-            select.innerHTML = `<option value="${currencyData.baseCode}">${currencyData.baseCode}</option>`;
-            
-            for (let code in currencyData.rates) {
-                select.add(new Option(code, code));
-            }
-            
-            if (currentVal && (currentVal === currencyData.baseCode || currencyData.rates[currentVal])) {
-                select.value = currentVal;
-            } else {
-                select.value = currencyData.baseCode;
-            }
-        }
-
-        function toBaseCurrency(amount, currency) {
-            if (!amount) return 0;
-            if (currency === currencyData.baseCode) return amount;
-            if (currencyData.rates[currency]) {
-                return amount * currencyData.rates[currency];
-            }
-            return amount; 
-        }
-
-        // ==========================
-        // 交通方式選單管理
-        // ==========================
-        function initTransports() {
-            const defaultTransports = ["捷運", "公車", "開車", "火車", "高鐵", "步行", "飛機", "船"];
-            const saved = localStorage.getItem(TRANSPORT_KEY);
-            if (saved) {
-                transportOptions = JSON.parse(saved);
-            } else {
-                transportOptions = [...defaultTransports];
-            }
-            renderTransportSelect();
-        }
-
-        function renderTransportSelect() {
-            const select = document.getElementById('input_transport');
-            const currentVal = select.value; 
-            select.innerHTML = '<option value="">請選擇</option>';
-            transportOptions.forEach(opt => {
-                select.add(new Option(opt, opt));
-            });
-            if (transportOptions.includes(currentVal)) select.value = currentVal;
-            else select.value = "";
-        }
-
-        function saveTransportOptions() {
-            localStorage.setItem(TRANSPORT_KEY, JSON.stringify(transportOptions));
-        }
-
-        function addCustomTransport() {
-            const custom = prompt("請輸入新的交通方式：");
-            if (custom && custom.trim() !== "") {
-                const val = custom.trim();
-                ensureTransportOptionExists(val);
-                document.getElementById('input_transport').value = val;
-            }
-        }
-
-        function removeSelectedTransport() {
-            const select = document.getElementById('input_transport');
-            const val = select.value;
-            if (!val) { alert("請先選擇一個交通方式！"); return; }
-            if (confirm(`確定要刪除「${val}」選單嗎？`)) {
-                transportOptions = transportOptions.filter(opt => opt !== val);
-                saveTransportOptions();
-                renderTransportSelect();
-            }
-        }
-
-        function ensureTransportOptionExists(val) {
-            if (!val || val === '-') return;
-            if (!transportOptions.includes(val)) {
-                transportOptions.push(val);
-                saveTransportOptions();
-                renderTransportSelect();
-            }
-        }
-
-        // ==========================
-        // 圖片上傳與管理邏輯
-        // ==========================
-        function handleImageUpload(input) {
-            const files = Array.from(input.files);
-            if (files.length === 0) return;
-
-            const resultsArray = new Array(files.length);
-            let loadedCount = 0;
-
-            files.forEach((file, index) => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    resultsArray[index] = e.target.result;
-                    loadedCount++;
-                    if (loadedCount === files.length) {
-                        uploadedImages = uploadedImages.concat(resultsArray);
-                        saveImagesToStorage();
-                        renderImages();
-                    }
-                };
-                reader.readAsDataURL(file);
-            });
-            input.value = ''; 
-        }
-
-        function deleteImage(index) {
-            if (confirm("確定要刪除這張圖片嗎？")) {
-                uploadedImages.splice(index, 1);
-                saveImagesToStorage();
-                renderImages();
-            }
-        }
-
-        function renderImages() {
-            const grid = document.getElementById('image-grid');
-            grid.innerHTML = '';
-
-            if (uploadedImages.length === 0) {
-                grid.innerHTML = '<p class="text-slate-400 text-sm italic col-span-2 py-4 text-center no-print">目前尚無附加圖片</p>';
-                return;
-            }
-
-            uploadedImages.forEach((imgBase64, index) => {
-                const wrapper = document.createElement('div');
-                wrapper.className = "print-img-wrapper relative border border-slate-200 rounded-lg overflow-hidden bg-slate-50 p-2 shadow-sm";
-                wrapper.innerHTML = `
-                    <button onclick="deleteImage(${index})" class="no-print absolute top-3 right-3 bg-red-600 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold hover:bg-red-700 shadow transition" title="刪除圖片">✕</button>
-                    <img src="${imgBase64}" class="w-full h-auto object-contain max-h-[500px] mx-auto rounded" alt="行程附件">
-                `;
-                grid.appendChild(wrapper);
-            });
-        }
-
-        function saveImagesToStorage() {
-            try {
-                localStorage.setItem(IMAGES_KEY, JSON.stringify(uploadedImages));
-            } catch(e) {
-                alert("圖片體積過大，已超出瀏覽器 LocalStorage 快取上限！\n但這不影響當前列印，建議匯出 JSON 做完整備份。");
-            }
-        }
-
-        function loadImagesFromStorage() {
-            const saved = localStorage.getItem(IMAGES_KEY);
-            if (saved) {
-                try {
-                    uploadedImages = JSON.parse(saved);
-                } catch(e) {
-                    uploadedImages = [];
-                }
-            }
-            renderImages();
-        }
-
-        function getCategoryBadge(cat) {
-            const map = {
-                '機票': '<span class="px-2 py-1 text-[11px] rounded bg-blue-100 text-blue-800 tracking-widest whitespace-nowrap">機票</span>',
-                '住宿': '<span class="px-2 py-1 text-[11px] rounded bg-purple-100 text-purple-800 tracking-widest whitespace-nowrap">住宿</span>',
-                '交通': '<span class="px-2 py-1 text-[11px] rounded bg-green-100 text-green-800 tracking-widest whitespace-nowrap">交通</span>',
-                '餐飲': '<span class="px-2 py-1 text-[11px] rounded bg-yellow-100 text-yellow-800 tracking-widest whitespace-nowrap">餐飲</span>',
-                '門票': '<span class="px-2 py-1 text-[11px] rounded bg-indigo-100 text-indigo-800 tracking-widest whitespace-nowrap">門票</span>',
-                '購物': '<span class="px-2 py-1 text-[11px] rounded bg-pink-100 text-pink-800 tracking-widest whitespace-nowrap">購物</span>',
-                '其他': '<span class="px-2 py-1 text-[11px] rounded bg-slate-100 text-slate-800 tracking-widest whitespace-nowrap">其他</span>'
-            };
-            return map[cat] || map['其他'];
-        }
-
-        // ==========================
-        // 核心邏輯
-        // ==========================
-        function handleFormSubmit() {
-            const editId = document.getElementById('edit_id').value;
-            if (editId) saveEdit(editId);
-            else addItem();
-        }
-
-        function addItem() {
-            const data = getFormData();
-            if (!data) return;
-            data.id = Date.now().toString() + Math.random().toString(36).substr(2, 5);
-            itineraryData.push(data);
-            refreshTable();
-            clearForm(true);
-            saveToStorage();
-        }
-
-        function saveEdit(id) {
-            const data = getFormData();
-            if (!data) return;
-            data.id = id; 
-            const index = itineraryData.findIndex(item => item.id === id);
-            if (index !== -1) {
-                itineraryData[index] = data;
-                refreshTable();
-                cancelEdit();
-                saveToStorage();
-            }
-        }
-
-        function deleteItem(id) {
-            if(confirm("確定刪除此行程嗎？")) {
-                itineraryData = itineraryData.filter(item => item.id !== id);
-                refreshTable();
-                if (document.getElementById('edit_id').value === id) cancelEdit();
-                saveToStorage();
-            }
-        }
-
-        function refreshTable() {
-            itineraryData.forEach(item => {
-                const transportVal = item.transport === '-' ? '' : item.transport;
-                ensureTransportOptionExists(transportVal);
-            });
-
-            itineraryData.sort((a, b) => {
-                const timeA = new Date(`${a.dateRaw}T${a.hour}:${a.min}`).getTime();
-                const timeB = new Date(`${b.dateRaw}T${b.hour}:${b.min}`).getTime();
-                return timeA - timeB;
-            });
-
-            const tbody = document.getElementById('itinerary-list');
-            tbody.innerHTML = '';
-
-            if (itineraryData.length === 0) {
-                calculateExpenses();
-                updateTimeline();
-                return;
-            }
-
-            const firstDateStr = itineraryData[0].dateRaw;
-            const firstDateObj = new Date(firstDateStr);
-            let lastDateStr = null;
-
-            itineraryData.forEach(item => {
-                if (item.dateRaw !== lastDateStr) {
-                    const currentDateObj = new Date(item.dateRaw);
-                    const diffTime = Math.abs(currentDateObj - firstDateObj);
-                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; 
-                    const weekdays = ["週日", "週一", "週二", "週三", "週四", "週五", "週六"];
-                    const weekday = weekdays[currentDateObj.getDay()];
-
-                    const separatorRow = document.createElement('tr');
-                    separatorRow.className = "day-header border-t-2 border-slate-300";
-                    separatorRow.innerHTML = `
-                        <td colspan="7" class="py-3 px-4 text-lg">
-                            📅 第 ${diffDays} 天 - <span class="font-normal text-slate-600 text-base">${item.dateRaw.replace(/-/g, '/')} (${weekday})</span>
-                        </td>
-                    `;
-                    tbody.appendChild(separatorRow);
-                    lastDateStr = item.dateRaw;
-                }
-
-                const row = document.createElement('tr');
-                row.id = `row-${item.id}`;
-                row.className = "hover:bg-slate-50 transition-colors border-b border-slate-100";
-                if(document.getElementById('edit_id').value === item.id) row.classList.add('editing-row');
-
-                const displayCost = (parseFloat(item.cost) || 0) === 0 ? "-" : `<span class="text-[10px] text-slate-400 mr-1">${item.currency||currencyData.baseCode}</span>` + parseFloat(item.cost).toLocaleString();
-
-                // 修正地圖 URL 編碼，將 '&' 替換成 'and' 以避免 Google Maps 誤判為多個搜尋詞
-                const safeDestForMap = item.dest.replace(/&/g, 'and');
-                const mapUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(safeDestForMap)}`;
-                const mapBtn = `<a href="${mapUrl}" target="_blank" class="text-blue-400 hover:text-blue-600 ml-1 no-print inline-block transform hover:scale-110 transition" title="Google Maps 導航">🗺️</a>`;
-
-                // 修正處：備註欄位加上 break-words 確保長字串（如連結或代碼）會自動折行不會推擠表格
-                row.innerHTML = `
-                    <td class="p-3 text-center font-black text-slate-800 text-lg font-mono">${item.hour}:${item.min}</td>
-                    <td class="p-3 font-bold text-slate-900 text-lg">${item.dest || "-"}${mapBtn}</td>
-                    <td class="p-3 text-slate-500 text-sm">${item.transport || "-"}</td>
-                    <td class="p-3 text-center text-xs font-bold text-slate-600 bg-yellow-50 rounded">${item.duration || "-"}</td>
-                    <td class="p-3 text-right font-mono font-bold text-slate-700">${displayCost}</td>
-                    <td class="p-3 text-center">${getCategoryBadge(item.category || '其他')}</td>
-                    <td class="p-3 pl-6 text-sm text-slate-600 border-l italic break-words">${item.notes || ""}</td>
-                    <td class="p-3 text-center no-print flex justify-center gap-2">
-                        <button onclick="editItem('${item.id}')" class="p-1 text-blue-500 hover:text-blue-700 font-bold">✎</button>
-                        <button onclick="deleteItem('${item.id}')" class="p-1 text-red-300 hover:text-red-500 font-bold">✕</button>
-                    </td>
-                `;
-                tbody.appendChild(row);
-            });
-            
-            calculateExpenses();
-            updateTimeline();
-        }
-
-        function calculateExpenses() {
-            let total = 0;
-            let catSum = { '機票': 0, '住宿': 0, '交通': 0, '餐飲': 0, '門票': 0, '購物': 0, '其他': 0 };
-
-            itineraryData.forEach(item => {
-                let val = toBaseCurrency(parseFloat(item.cost) || 0, item.currency || currencyData.baseCode);
-                total += val;
-                let cat = item.category || '其他';
-                if(catSum[cat] !== undefined) catSum[cat] += val;
-                else catSum['其他'] += val;
-            });
-
-            document.getElementById('total-amount').innerText = Math.round(total).toLocaleString();
-            document.getElementById('total-currency').innerText = currencyData.baseSymbol;
-
-            const chart = document.getElementById('expense-chart');
-            const legend = document.getElementById('expense-legend');
-            chart.innerHTML = ''; legend.innerHTML = '';
-            if(total === 0) return;
-
-            const styles = { '機票': ['bg-blue-500', 'text-blue-600'], '住宿': ['bg-purple-500', 'text-purple-600'], '交通': ['bg-green-500', 'text-green-600'], '餐飲': ['bg-yellow-500', 'text-yellow-600'], '門票': ['bg-indigo-500', 'text-indigo-600'], '購物': ['bg-pink-500', 'text-pink-600'], '其他': ['bg-slate-500', 'text-slate-600'] };
-
-            for(let cat in catSum) {
-                if(catSum[cat] > 0) {
-                    let pct = (catSum[cat] / total * 100).toFixed(1);
-                    let bar = document.createElement('div');
-                    bar.className = `h-full ${styles[cat][0]}`; bar.style.width = `${pct}%`; bar.title = `${cat}: ${pct}%`;
-                    chart.appendChild(bar);
-                    let leg = document.createElement('div'); leg.className = `flex items-center gap-1`;
-                    leg.innerHTML = `<span class="w-3 h-3 rounded-full ${styles[cat][0]} shadow-sm"></span> <span class="${styles[cat][1]} tracking-widest">${cat} ${pct}%</span>`;
-                    legend.appendChild(leg);
-                }
-            }
-        }
-
-        function getFormData() {
-            const dateVal = document.getElementById('input_date').value;
-            const hourVal = document.getElementById('input_hour').value;
-            const minVal = document.getElementById('input_min').value;
-            const destVal = document.getElementById('input_dest').value;
-            if (!dateVal || !destVal) { alert("請填寫日期與目的地！"); return null; }
-            return {
-                dateRaw: dateVal, hour: hourVal, min: minVal, dest: destVal,
-                transport: document.getElementById('input_transport').value || "-",
-                duration: document.getElementById('input_duration').value || "-",
-                cost: parseFloat(document.getElementById('input_cost').value) || 0,
-                currency: document.getElementById('input_currency').value || currencyData.baseCode,
-                category: document.getElementById('input_category').value || "其他",
-                notes: document.getElementById('input_notes').value || ""
-            };
-        }
-
-        function editItem(id) {
-            const item = itineraryData.find(d => d.id === id);
-            if (!item) return;
-            document.getElementById('edit_id').value = id;
-            document.getElementById('input_date').value = item.dateRaw;
-            document.getElementById('input_hour').value = item.hour;
-            document.getElementById('input_min').value = item.min;
-            document.getElementById('input_dest').value = item.dest;
-            const transportVal = item.transport === '-' ? '' : item.transport;
-            ensureTransportOptionExists(transportVal);
-            document.getElementById('input_transport').value = transportVal;
-            document.getElementById('input_duration').value = item.duration === '-' ? '' : item.duration;
-            document.getElementById('input_cost').value = item.cost;
-            document.getElementById('input_category').value = item.category || '其他';
-            document.getElementById('input_notes').value = item.notes;
-
-            const currencyVal = item.currency || currencyData.baseCode;
-            if (!currencyData.rates[currencyVal] && currencyVal !== currencyData.baseCode) {
-                currencyData.rates[currencyVal] = 1.0;
-                saveRatesToLocalStorage();
-                renderCurrencyUI();
-            }
-            document.getElementById('input_currency').value = currencyVal;
-
-            const btnArea = document.getElementById('main-btn');
-            btnArea.innerHTML = "💾 保存修改";
-            btnArea.classList.replace('bg-slate-800', 'bg-orange-600');
-            document.getElementById('cancel-edit-area').classList.remove('hidden');
-            document.getElementById('input-area').scrollIntoView({ behavior: 'smooth' });
-            refreshTable();
-        }
-
-        function cancelEdit() {
-            document.getElementById('edit_id').value = "";
-            const btnArea = document.getElementById('main-btn');
-            btnArea.innerHTML = "<span>＋</span> 加入行程";
-            btnArea.classList.replace('bg-orange-600', 'bg-slate-800');
-            document.getElementById('cancel-edit-area').classList.add('hidden');
-            clearForm(true);
-            refreshTable();
-        }
-
-        function clearForm(keepDateTime = false) {
-            document.getElementById('input_dest').value = '';
-            document.getElementById('input_transport').value = '';
-            document.getElementById('input_duration').value = '';
-            document.getElementById('input_cost').value = '';
-            document.getElementById('input_currency').value = currencyData.baseCode;
-            document.getElementById('input_category').value = '其他';
-            document.getElementById('input_notes').value = '';
-        }
-
-        // 統一存檔名稱為 v13
-        function saveToStorage() {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(itineraryData));
-            showSaveStatus();
-        }
-
-        function loadFromStorage() {
-            const savedData = localStorage.getItem(STORAGE_KEY);
-            if (savedData) {
-                try {
-                    itineraryData = fixMissingIds(JSON.parse(savedData));
-                    refreshTable();
-                } catch(e) {
-                    console.error("讀取快取失敗", e);
-                }
-            }
-        }
-
-        // ==========================
-        // 待辦清單邏輯
-        // ==========================
-        function loadPackingFromStorage() {
-            const saved = localStorage.getItem(PACKING_KEY);
-            if (saved) packingList = JSON.parse(saved);
-            renderPackingList();
-        }
-        function savePackingToStorage() { localStorage.setItem(PACKING_KEY, JSON.stringify(packingList)); }
-        function renderPackingList() {
-            const ul = document.getElementById('packing-list'); ul.innerHTML = '';
-            packingList.forEach(item => {
-                const li = document.createElement('li');
-                li.className = "flex items-center gap-2 group p-1 hover:bg-slate-50 rounded transition";
-                li.innerHTML = `
-                    <input type="checkbox" id="pack-${item.id}" ${item.done ? 'checked' : ''} class="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500 cursor-pointer border-slate-300" onchange="togglePacking('${item.id}')">
-                    <label for="pack-${item.id}" class="flex-1 cursor-pointer select-none ${item.done ? 'line-through text-slate-400' : ''}">${item.text}</label>
-                    <button onclick="deletePacking('${item.id}')" class="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition no-print bg-white rounded-full w-5 h-5 flex items-center justify-center font-bold">✕</button>
-                `;
-                ul.appendChild(li);
-            });
-        }
-        function addPackingItem() {
-            const input = document.getElementById('packing-input');
-            const text = input.value.trim();
-            if (!text) return;
-            packingList.push({ id: Date.now().toString(), text, done: false });
-            input.value = ''; savePackingToStorage(); renderPackingList();
-        }
-        function togglePacking(id) {
-            const item = packingList.find(i => i.id === id);
-            if (item) { item.done = !item.done; savePackingToStorage(); renderPackingList(); }
-        }
-        function deletePacking(id) {
-            packingList = packingList.filter(i => i.id !== id);
-            savePackingToStorage(); renderPackingList();
-        }
-        function loadPackingTemplate() {
-            if(confirm("將附加出國必備清單至目前的列表中，確定嗎？")) {
-                const templates = ["護照 (效期>6個月)", "簽證/入境申請表", "當地網卡/eSIM", "萬國轉接頭", "行動電源與充電線", "常備藥品 (腸胃/感冒)", "信用卡與外幣現金", "換洗衣物與外套", "個人盥洗/防曬用品", "旅平險保單憑證"];
-                templates.forEach(text => {
-                    if(!packingList.some(i => i.text === text)) {
-                        packingList.push({ id: Math.random().toString(36).substr(2, 9), text, done: false });
-                    }
-                });
-                savePackingToStorage(); renderPackingList();
-            }
-        }
-
-        function exportData() {
-            const packageData = {
-                itinerary: itineraryData,
-                images: uploadedImages,
-                packing: packingList,
-                rates: currencyData
-            };
-            const blob = new Blob([JSON.stringify(packageData, null, 2)], { type: "application/json" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url; a.download = `行程備份_${new Date().toISOString().split('T')[0]}.json`;
-            document.body.appendChild(a); a.click(); document.body.removeChild(a);
-        }
-
-        // ==========================
-        // ★ 終極相容讀取引擎 ★
-        // ==========================
-        function importData(input) {
-            const file = input.files[0]; if (!file) return;
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const parsed = JSON.parse(e.target.result);
-                    processImportedData(parsed);
-                } catch(err) { 
-                    console.error("讀取失敗：", err);
-                    alert("檔案格式異常或不相容，無法正確載入！"); 
-                }
-                input.value = '';
-            };
-            reader.readAsText(file);
-        }
-
-        function processImportedData(parsedData) {
-            if(!confirm("確定載入此檔案嗎？目前資料將被覆蓋。")) return;
-
-            // 1. 處理最舊版的純陣列格式 (v1~v12)
-            if (Array.isArray(parsedData)) {
-                itineraryData = fixMissingIds(parsedData);
-                uploadedImages = [];
-                packingList = [];
-                // ★ 關鍵修復：讀取舊版資料時，重置匯率設定為預設值 (以 TWD 為主)
-                currencyData = {
-                    baseCode: 'TWD',
-                    baseSymbol: 'NT$',
-                    rates: {
-                        'JPY': 0.21,
-                        'THB': 0.90,
-                        'NZD': 19.5
-                    }
-                };
-            } 
-            // 2. 處理新版物件格式 (v13+)
-            else if (parsedData && typeof parsedData === 'object') {
-                itineraryData = fixMissingIds(parsedData.itinerary || []);
-                uploadedImages = Array.isArray(parsedData.images) ? parsedData.images : [];
-                packingList = Array.isArray(parsedData.packing) ? parsedData.packing : [];
-                
-                // 匯率結構防呆相容處理
-                if (parsedData.rates) {
-                    if (parsedData.rates.baseCode) {
-                        // v13.2+ 正常格式
-                        currencyData.baseCode = parsedData.rates.baseCode;
-                        currencyData.baseSymbol = parsedData.rates.baseSymbol || currencyData.baseSymbol;
-                        currencyData.rates = parsedData.rates.rates || currencyData.rates;
-                    } else if (parsedData.rates.base) {
-                        // v13.1 過渡期格式
-                        currencyData.baseCode = 'TWD';
-                        currencyData.baseSymbol = parsedData.rates.base;
-                        currencyData.rates = {
-                            'JPY': parsedData.rates.JPY || 0.21,
-                            'THB': parsedData.rates.THB || 0.90,
-                            'NZD': parsedData.rates.NZD || 19.5
-                        };
-                    }
-                }
-            } else {
-                throw new Error("無法識別的格式");
-            }
-
-            // ★ 關鍵修復：舊行程若沒有標示幣別，一律預設為 TWD，並動態補齊缺少的幣別選單
-            itineraryData.forEach(item => {
-                if (!item.currency) item.currency = 'TWD';
-                if (item.currency !== currencyData.baseCode && !currencyData.rates[item.currency]) {
-                    currencyData.rates[item.currency] = 1.0; 
-                }
-            });
-            
-            // 寫入快取並重新渲染畫面
-            localStorage.setItem(RATES_KEY, JSON.stringify(currencyData));
-            saveToStorage(); saveImagesToStorage(); savePackingToStorage();
-            refreshTable(); renderImages(); renderPackingList(); renderCurrencyUI(); 
-        }
-
-        function fixMissingIds(data) {
-            if (!Array.isArray(data)) return [];
-            return data.map((item, index) => item.id ? item : { ...item, id: Date.now().toString() + index });
-        }
-
-        function clearAllData() {
-            if(confirm("確定要清空所有行程與圖片嗎？")) { 
-                itineraryData = []; 
-                uploadedImages = [];
-                packingList = [];
-                refreshTable(); 
-                renderImages();
-                renderPackingList();
-                saveToStorage(); 
-                saveImagesToStorage();
-                savePackingToStorage();
-            }
-        }
-
-        function showSaveStatus() {
-            const status = document.getElementById('save-status');
-            status.style.opacity = '1'; status.classList.remove('save-toast');
-            void status.offsetWidth; status.classList.add('save-toast');
-        }
-        
-        function updateTimeline() {
-            const now = new Date();
-            let nextItem = null;
-            let currentItem = null;
-            
-            for(let i=0; i<itineraryData.length; i++) {
-                const item = itineraryData[i];
-                const itemTime = new Date(`${item.dateRaw}T${item.hour}:${item.min}`);
-                if (itemTime > now) {
-                    nextItem = item;
-                    if (i > 0 && itineraryData[i-1].dateRaw === item.dateRaw) currentItem = itineraryData[i-1];
-                    break;
-                }
-            }
-
-            document.querySelectorAll('.current-item').forEach(el => el.classList.remove('current-item'));
-            if (currentItem) {
-                const row = document.getElementById(`row-${currentItem.id}`);
-                if (row) row.classList.add('current-item');
-            }
-
-            const tracker = document.getElementById('live-tracker');
-            if (nextItem) {
-                const diffMs = new Date(`${nextItem.dateRaw}T${nextItem.hour}:${nextItem.min}`) - now;
-                const hrs = Math.floor(diffMs / 3600000); const mins = Math.floor((diffMs % 3600000) / 60000);
-                if (hrs < 24) {
-                    tracker.innerHTML = `📍 距離下一個行程「<span class="underline underline-offset-4">${nextItem.dest}</span>」還有 <span class="text-xl mx-1">${hrs > 0 ? hrs + ' 小時 ' : ''}${mins} 分鐘</span>`;
-                    tracker.classList.remove('-translate-y-full'); tracker.classList.add('translate-y-0');
-                    return;
-                }
-            }
-            tracker.classList.add('-translate-y-full'); tracker.classList.remove('translate-y-0');
-        }
-
-        function generatePDF() {
-            window.print();
-        }
-
-        // ==========================
-        // Google Drive Integration
-        // ==========================
-        // ❗ 重要：請從 Google Cloud Console 取得您自己的 API 金鑰與用戶端 ID
-        // 參考說明：https://developers.google.com/drive/api/quickstart/js
-        const DISCOVERY_DOCS = ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"];
-        const SCOPES = 'https://www.googleapis.com/auth/drive.file';
-        
-        let tokenClient;
-        let gapiInited = false;
-        let gisInited = false;
-
-        async function initGapiClient() {
-            // 使用 Promise 來確保兩個 API 都已載入
-            const gapiPromise = new Promise((resolve, reject) => {
-                gapi.load('client', async () => {
-                    try {
-                        await gapi.client.init({
-                            apiKey: GOOGLE_API_CONFIG.API_KEY,
-                            discoveryDocs: DISCOVERY_DOCS,
-                        });
-                        gapiInited = true;
-                        resolve();
-                    } catch (error) {
-                        reject(error);
-                    }
-                });
-            });
-
-            const gisPromise = new Promise((resolve) => {
-                tokenClient = google.accounts.oauth2.initTokenClient({
-                    client_id: GOOGLE_API_CONFIG.CLIENT_ID,
-                    scope: SCOPES,
-                    callback: (tokenResponse) => {
-                        if (tokenResponse && tokenResponse.access_token) {
-                            updateGdriveUI(true);
-                        }
-                    },
-                });
-                gisInited = true;
-                resolve();
-            });
-
-            try {
-                // 等待兩個 Promise 都完成後，才啟用登入按鈕
-                await Promise.all([gapiPromise, gisPromise]);
-                const loginBtn = document.getElementById('gdrive-login-btn');
-                loginBtn.disabled = false;
-                loginBtn.classList.remove('bg-gray-400', 'cursor-not-allowed');
-                loginBtn.classList.add('bg-gray-600', 'hover:bg-gray-500');
-                document.getElementById('gdrive-login-text').textContent = '登入 Google';
-            } catch (error) {
-                // 如果初始化過程中發生任何錯誤
-                console.error("Google API 初始化失敗:", error);
-                const loginBtn = document.getElementById('gdrive-login-btn');
-                loginBtn.disabled = true;
-                loginBtn.classList.remove('bg-gray-400');
-                loginBtn.classList.add('bg-red-500', 'cursor-not-allowed');
-                document.getElementById('gdrive-login-text').textContent = '載入失敗';
-                alert("Google API 初始化失敗！請按 F12 打開開發者工具，查看 Console 中的錯誤訊息。");
-            }
-        }
-
-        function handleAuthClick() {
-            if (!gapiInited || !gisInited) {
-                alert("Google API 尚未初始化，請稍後再試。");
-                return;
-            }
-            if (typeof GOOGLE_API_CONFIG === 'undefined' || !GOOGLE_API_CONFIG.API_KEY || GOOGLE_API_CONFIG.API_KEY.includes('YOUR_')) {
-                alert("錯誤：尚未設定 Google API Key，請在程式碼中填入。");
-                return;
-            }
-            tokenClient.requestAccessToken({prompt: 'consent'});
-        }
-
-        function handleSignoutClick() {
-            const token = gapi.client.getToken();
-            if (token !== null) {
-                google.accounts.oauth2.revoke(token.access_token, () => {
-                    gapi.client.setToken('');
-                    updateGdriveUI(false);
-                });
-            }
-        }
-
-        function updateGdriveUI(isLoggedIn) {
-            document.getElementById('gdrive-auth-buttons').style.display = isLoggedIn ? 'none' : 'flex';
-            document.getElementById('gdrive-action-buttons').style.display = isLoggedIn ? 'flex' : 'none';
-        }
-
-        async function listBackupFiles() {
-            const response = await gapi.client.drive.files.list({
-                q: "appProperties has { key='travelPlannerBackup' and value='true' } and trashed=false",
-                fields: 'files(id, name, modifiedTime)',
-                orderBy: 'modifiedTime desc',
-                spaces: 'drive'
-            });
-            return response.result.files || [];
-        }
-
-        async function createNewBackupFile(fileName) {
-            const createResponse = await gapi.client.drive.files.create({
-                resource: { 
-                    name: fileName,
-                    appProperties: {
-                        travelPlannerBackup: 'true'
-                    }
-                },
-                fields: 'id'
-            });
-            return createResponse.result.id;
-        }
-
-        async function saveToDrive() {
-            try {
-                const files = await listBackupFiles();
-                // 無論如何都顯示彈出視窗，讓使用者選擇覆寫或建立新的
-                showGdriveModal('雲端備份', files, async (fileId) => {
-                    closeGdriveModal();
-                    if (fileId) { // 如果 fileId 存在，表示使用者選擇了覆寫
-                        await uploadFileContent(fileId);
-                    }
-                });
-            } catch (err) {
-                console.error("雲端備份失敗:", err);
-                alert("雲端備份失敗，請檢查瀏覽器 Console 的錯誤訊息。");
-            }
-        }
-
-        async function handleSaveNewFile() {
-            closeGdriveModal();
-            try {
-                const defaultName = `行程備份_${new Date().toISOString().split('T')[0]}.json`;
-                const fileName = prompt("請輸入新備份的檔案名稱：", defaultName);
-                if (!fileName) return; // 使用者取消
-
-                const newFileId = await createNewBackupFile(fileName);
-                await uploadFileContent(newFileId);
-            } catch (err) {
-                console.error("建立新備份失敗:", err);
-                alert("建立新備份失敗，請檢查瀏覽器 Console 的錯誤訊息。");
-            }
-        }
-
-        async function uploadFileContent(fileId) {
-            const packageData = { itinerary: itineraryData, images: uploadedImages, packing: packingList, rates: currencyData };
-            const fileContent = JSON.stringify(packageData, null, 2);
-
-            await gapi.client.request({
-                path: `/upload/drive/v3/files/${fileId}`,
-                method: 'PATCH',
-                params: { uploadType: 'media' },
-                headers: { 'Content-Type': 'application/json' },
-                body: fileContent
-            });
-            alert(`成功備份至 Google Drive！`);
-        }
-
-        async function loadFromDrive() {
-            try {
-                 const files = await listBackupFiles();
-                 if (files.length === 0) {
-                     alert("Google Drive 上沒有找到任何備份檔案。");
-                     return;
-                 }
- 
-                 showGdriveModal('選擇要讀取的備份', files, async (fileId) => {
-                     if (!fileId) return; // 如果使用者取消選擇
-                     closeGdriveModal();
-                     try {
-                         const response = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
-                         if (response.result) {
-                             processImportedData(response.result);
-                         }
-                     } catch (err) {
-                         console.error("從雲端讀取特定檔案失敗:", err);
-                         alert("讀取檔案內容失敗！");
-                     }
-                 });
-            } catch (err) {
-                console.error("從雲端讀取失敗:", err);
-                alert("從雲端讀取失敗，可能是雲端上尚未有備份檔案，或是授權已過期。");
-            }
-        }
-
-        function showGdriveModal(title, files, callback) {
-            const modal = document.getElementById('gdrive-file-modal');
-            const fileList = document.getElementById('gdrive-file-list');
-            const newBtn = document.getElementById('gdrive-modal-new-btn');
-            document.getElementById('gdrive-modal-title').textContent = title;
-            fileList.innerHTML = '';
-
-            if (files.length === 0) {
-                fileList.innerHTML = '<p class="text-slate-500 text-center py-4">沒有找到任何備份檔案。</p>';
-            } else {
-                files.forEach(file => {
-                    const fileEl = document.createElement('div');
-                    fileEl.className = 'p-3 hover:bg-slate-100 rounded cursor-pointer border-b flex justify-between items-center';
-                    fileEl.innerHTML = `
-                        <div>
-                            <div class="font-bold text-slate-800">${file.name}</div>
-                            <div class="text-xs text-slate-500 mt-1">上次修改：${new Date(file.modifiedTime).toLocaleString()}</div>
-                        </div>
-                        <span class="text-xs font-bold text-orange-600">覆寫</span>
-                    `;
-                    fileEl.onclick = () => callback(file.id);
-                    fileList.appendChild(fileEl);
-                });
-            }
-
-            // 只有在 "儲存/覆寫" 時才顯示 "建立新備份" 按鈕
-            newBtn.style.display = title.includes('備份') ? 'block' : 'none';
-            modal.classList.remove('hidden');
-        }
-
-        function closeGdriveModal() {
-            document.getElementById('gdrive-file-modal').classList.add('hidden');
-        }
-    </script>
+    <script src="js/app.js"></script>
 </body>
 </html>
